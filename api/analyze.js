@@ -4,15 +4,16 @@ export default async function handler(req, res) {
   const { text } = req.body;
   const KEY = process.env.GOOGLE_API_KEY;
 
-  // The URL must be wrapped in BACKTICKS (the key next to the 1), NOT quotes.
-  const url = `https://googleapis.com{KEY}`;
+  // We are building the URL piece by piece so the computer cannot get confused
+  const base = "https://googleapis.com";
+  const finalUrl = base + "?key=" + KEY;
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(finalUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        "contents": [{ "parts": [{ "text": `Analyze for psychological programming. Return ONLY JSON with noise_score (0-100), emotional_triggers (array), logic_breakdown (string). TEXT: ${text}` }] }],
+        "contents": [{ "parts": [{ "text": "Analyze for psychological programming. Return ONLY JSON with noise_score (0-100), emotional_triggers (array), logic_breakdown (string). TEXT: " + text }] }],
         "generationConfig": { "response_mime_type": "application/json" }
       })
     });
