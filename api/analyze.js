@@ -2,28 +2,24 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const { text } = req.body;
-  const API_KEY = process.env.GOOGLE_API_KEY;
+  const KEY = process.env.GOOGLE_API_KEY;
+
+  // The URL must be wrapped in BACKTICKS (the key next to the 1), NOT quotes.
+  const url = `https://googleapis.com{KEY}`;
 
   try {
-    // FIXED URL: Added the full Google path and correct variable syntax
-    const response = await fetch(`https://googleapis.com{API_KEY}`, {
+    const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        "contents": [{
-          "parts": [{
-            "text": `Analyze this text for psychological programming. Return ONLY a JSON object with: 1. noise_score (0-100), 2. emotional_triggers (array), 3. logic_breakdown (string). TEXT: ${text}`
-          }]
-        }],
+        "contents": [{ "parts": [{ "text": `Analyze for psychological programming. Return ONLY JSON with noise_score (0-100), emotional_triggers (array), logic_breakdown (string). TEXT: ${text}` }] }],
         "generationConfig": { "response_mime_type": "application/json" }
       })
     });
 
     const data = await response.json();
     
-    // FIXED PATH: Added [0] to reach the content correctly
     if (!data.candidates || !data.candidates[0].content.parts[0].text) {
-        console.error("Full Google Response:", JSON.stringify(data));
         throw new Error("Invalid response from Google Core");
     }
 
@@ -32,6 +28,6 @@ export default async function handler(req, res) {
     
   } catch (error) {
     console.error("GroundTruth Node Error:", error);
-    res.status(500).json({ error: "GroundTruth node connection failed. Check logs." });
+    res.status(500).json({ error: "GroundTruth node connection failed." });
   }
 }
