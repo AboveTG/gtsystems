@@ -1,50 +1,43 @@
 // api/analyze.js
 export default async function handler(req, res) {
-  // Ensure we only process POST requests
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const { text } = req.body;
 
   try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    // Google's OpenAI-compatible endpoint
+    const response = await fetch("https://googleapis.com", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://gtsystems.work", // Optional: identifies your site to OpenRouter
-        "X-Title": "GroundTruth Systems"           // Optional: labels your site on their leaderboard
+        // This tells Google to use your key from the Vercel Environment Variables
+        "Authorization": `Bearer ${process.env.GOOGLE_API_KEY}`
       },
       body: JSON.stringify({
-       "model": "meta-llama/llama-3.2-3b-instruct:free",
+        "model": "gemini-2.0-flash-lite-preview-02-05", // Powerful & Free
         "messages": [
           {
             "role": "system", 
-            "content": "You are a GroundTruth Systems analyst. Analyze the text for psychological programming. Provide: 1. A 'noise_score' (0-100), 2. A list of 'emotional_triggers', 3. A 'logic_breakdown' explaining fallacies and shaming. Format the final response as a valid, single JSON object."
+            "content": "You are a GroundTruth Systems analyst. Analyze the text for psychological programming. Provide: 1. A 'noise_score' (0-100), 2. A list of 'emotional_triggers', 3. A 'logic_breakdown' of fallacies. Format the response as a single, valid JSON object."
           },
           { "role": "user", "content": text }
         ],
-        "response_format": { "type": "json_object" } // Ensures the AI speaks strictly in code
+        "response_format": { "type": "json_object" }
       })
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error("OpenRouter Error:", errorData);
-      return res.status(response.status).json({ error: "Upstream API Error" });
-    }
-
     const data = await response.json();
     
-    // Safety check: sometimes AI adds markdown backticks, we strip those
-    let content = data.choices[0].message.content;
-    const cleanJson = content.replace(/```json|```/g, "").trim();
-    
-    res.status(200).json(JSON.parse(cleanJson));
+    // Safety check for empty or broken responses
+    if (!data.choices || !data.choices[0]) {
+       throw new Error("Invalid API response structure");
+    }
+
+    const aiContent = JSON.parse(data.choices.message.content);
+    res.status(200).json(aiContent);
     
   } catch (error) {
-    console.error("Internal Server Error:", error);
+    console.error("Gemini Error:", error);
     res.status(500).json({ error: "GroundTruth node connection failed." });
   }
 }
