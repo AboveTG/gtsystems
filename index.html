@@ -1,0 +1,65 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GT Systems | Ground Truth</title>
+    <style>
+        :root { --bg: #0a0a0a; --text: #e0e0e0; --accent: #00ff41; --subtle: #1a1a1a; }
+        body { background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; overflow: hidden; }
+        .container { max-width: 700px; width: 90%; text-align: center; position: relative; z-index: 2; }
+        h1 { font-size: 2.5rem; color: var(--accent); margin: 0; text-shadow: 0 0 10px rgba(0,255,65,0.5); }
+        .manifesto { background: var(--subtle); padding: 20px; border: 1px solid #333; margin: 25px 0; border-left: 4px solid var(--accent); text-align: left; }
+        textarea { width: 100%; height: 120px; background: #000; border: 1px solid #333; color: var(--accent); padding: 10px; box-sizing: border-box; font-family: inherit; resize: none; outline: none; transition: border 0.3s; }
+        textarea:focus { border-color: var(--accent); }
+        button { background: var(--accent); color: #000; border: none; padding: 15px 40px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; letter-spacing: 2px; }
+        
+        /* The Animation Overlay */
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 10; }
+        .scanline { width: 100%; height: 2px; background: var(--accent); position: absolute; top: 0; animation: scan 2s linear infinite; opacity: 0.3; }
+        @keyframes scan { from { top: 0; } to { top: 100%; } }
+        .decrypt-text { color: var(--accent); font-size: 1.5rem; }
+    </style>
+</head>
+<body>
+    <div id="overlay">
+        <div class="scanline"></div>
+        <div class="decrypt-text" id="status">DECRYPTING REALITY...</div>
+    </div>
+
+    <div class="container">
+        <h1>GT SYSTEMS</h1>
+        <p style="color: #666;">[ INDEPENDENT SENSOR NODE ]</p>
+        <div class="manifesto">
+            "The box in the corner doesn't inform you; it programs you. An independent person is the only thing a system cannot own."
+        </div>
+        <textarea id="input" placeholder="PASTE PROPAGANDA HERE..."></textarea>
+        <button onclick="startDecryption()">EXTRACT GROUND TRUTH</button>
+    </div>
+
+    <script>
+        function startDecryption() {
+            const val = document.getElementById('input').value;
+            if(!val) return alert("System requires input to analyze.");
+            
+            document.getElementById('overlay').style.display = 'flex';
+            const status = document.getElementById('status');
+            const messages = ["BYPASSING FILTERS...", "IDENTIFYING HOOKS...", "STRIPPING NOISE...", "TRUTH EXTRACTED."];
+            let i = 0;
+
+            const interval = setInterval(() => {
+                status.innerText = messages[i];
+                i++;
+                if(i === messages.length) {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        document.getElementById('overlay').style.display = 'none';
+                        alert("Analysis complete. Check the console for logic breakdown (Integration coming soon).");
+                    }, 1000);
+                }
+            }, 1200);
+        }
+    </script>
+</body>
+</html>
