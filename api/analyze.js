@@ -10,7 +10,7 @@ export default async function handler(req, res) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        "model": "meta-llama/llama-3-8b-instruct:free", // This is a powerful FREE model
+        "model": "meta-llama/llama-3.3-70b-instruct:free", // This is a powerful FREE model
         "messages": [
           {
             "role": "system", 
