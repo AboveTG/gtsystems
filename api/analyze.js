@@ -17,7 +17,7 @@ export default async function handler(req, res) {
         "X-Title": "GroundTruth Systems"           // Optional: labels your site on their leaderboard
       },
       body: JSON.stringify({
-        "model": "meta-llama/llama-3.3-70b-instruct:free",
+       "model": "meta-llama/llama-3.2-3b-instruct:free",
         "messages": [
           {
             "role": "system", 
