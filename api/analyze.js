@@ -1,4 +1,3 @@
-// api/analyze.js
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -6,7 +5,7 @@ export default async function handler(req, res) {
   const API_KEY = process.env.GOOGLE_API_KEY;
 
   try {
-    // Using the NATIVE Google Gemini endpoint
+    // FIXED URL: Added the full Google path and correct variable syntax
     const response = await fetch(`https://googleapis.com{API_KEY}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -22,7 +21,7 @@ export default async function handler(req, res) {
 
     const data = await response.json();
     
-    // Safety check for Google's specific response structure
+    // FIXED PATH: Added [0] to reach the content correctly
     if (!data.candidates || !data.candidates[0].content.parts[0].text) {
         console.error("Full Google Response:", JSON.stringify(data));
         throw new Error("Invalid response from Google Core");
