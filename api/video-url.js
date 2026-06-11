@@ -15,23 +15,23 @@ if (!url) {
 
 try {
 
-    // STEP 1: classify
+    // STEP 1: classify input
     const meta = await extractFromUrl(url);
 
-    // STEP 2: real transcript (YouTube supported)
+    // STEP 2: guaranteed text output
     const text = await transcribe(url, meta.type);
 
-    // STEP 3: send to analyzer
-    const analysis = await fetch(
-        `${process.env.BASE_URL}/api/analyze`,
-        {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ text })
-        }
-    );
+    // STEP 3: analysis call (internal)
+    const base =
+        process.env.VERCEL_URL
+            ? `https://${process.env.VERCEL_URL}`
+            : "";
+
+    const analysis = await fetch(`${base}/api/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text })
+    });
 
     const result = await analysis.json();
 
@@ -45,7 +45,7 @@ try {
     console.error(err);
 
     return res.status(500).json({
-        error: "Video ingestion failed"
+        error: "Ingestion pipeline failed"
     });
 }
 }
