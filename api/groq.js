@@ -1,54 +1,92 @@
 export default async function handler(req, res) {
-  // 1. Only allow POST requests
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const { text } = req.body;
-
-  try {
-    // 2. Call the Groq API
-    const response = await fetch("https://groq.com", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          { 
-            role: "system", 
-            content: "Return ONLY a JSON object with: noise_score (0-100), emotional_triggers (array), logic_breakdown (string)." 
-          },
-          { role: "user", content: text }
-        ],
-        response_format: { type: "json_object" }
-      })
-    });
-
-    // 3. Handle API Errors (like 401 Unauthorized or 429 Rate Limit)
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error(`Groq API Error: ${response.status}`, errorData);
-      return res.status(response.status).json({ error: "Communication with Groq failed" });
+    if (req.method !== 'POST') {
+        return res.status(405).json({
+            error: 'Method not allowed'
+        });
     }
 
-    const data = await response.json();
+    const { text } = req.body;
 
-    // 4. Extract and parse the content from the model's response
-    // Groq's response follows the OpenAI format: choices[0].message.content
-    const content = data.choices[0]?.message?.content;
-    
-    if (!content) {
-      throw new Error("No content returned from Groq");
+    try {
+        const controller = new AbortController();
+
+        const timeout = setTimeout(() => {
+            controller.abort();
+        }, 20000);
+
+        const response = await fetch(
+            "https://api.groq.com/openai/v1/chat/completions",
+            {
+                method: "POST",
+                signal: controller.signal,
+                headers: {
+                    Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    model: "llama-3.3-70b-versatile",
+                    messages: [
+                        {
+                            role: "system",
+                            content: `
+Analyze the provided text.
+
+Return ONLY valid JSON.
+
+{
+  "noise_score": 0,
+  "emotional_triggers": [],
+  "logic_breakdown": ""
+}
+
+Evaluate:
+- Emotional manipulation
+- Fear appeals
+- Authority appeals
+- Loaded language
+- Missing context
+- Unsupported claims
+
+Remain objective.
+`
+                        },
+                        {
+                            role: "user",
+                            content: text
+                        }
+                    ],
+                    response_format: {
+                        type: "json_object"
+                    }
+                })
+            }
+        );
+
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+            throw new Error(`Groq Error ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        const content =
+            data.choices?.[0]?.message?.content;
+
+        const cleanContent = content
+            .replace(/```json/g, "")
+            .replace(/```/g, "")
+            .trim();
+
+        const result = JSON.parse(cleanContent);
+
+        return res.status(200).json(result);
+
+    } catch (err) {
+        console.error(err);
+
+        return res.status(500).json({
+            error: "Groq node failed"
+        });
     }
-
-    const result = JSON.parse(content);
-    return res.status(200).json(result);
-
-  } catch (error) {
-    console.error("Server Error:", error);
-    return res.status(500).json({ error: "Internal server error during processing" });
-  }
 }
