@@ -1,219 +1,206 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GT Systems | Ground Truth</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GT Systems | Ground Truth</title>
 
-    <style>
-        :root { --bg: #0a0a0a; --text: #e0e0e0; --accent: #00ff41; --subtle: #1a1a1a; }
+<style>
+:root {
+    --bg:#0a0a0a;
+    --text:#e0e0e0;
+    --accent:#00ff41;
+    --subtle:#1a1a1a;
+}
 
-        body {
-            background: var(--bg);
-            color: var(--text);
-            font-family: 'Courier New', monospace;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 20px;
-        }
+body {
+    background:var(--bg);
+    color:var(--text);
+    font-family:monospace;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    min-height:100vh;
+    margin:0;
+    padding:20px;
+}
 
-        .container {
-            max-width: 700px;
-            width: 100%;
-            text-align: center;
-        }
+.container {
+    width:100%;
+    max-width:720px;
+}
 
-        h1 {
-            color: var(--accent);
-            text-shadow: 0 0 10px rgba(0,255,65,0.5);
-        }
+h1 {
+    color:var(--accent);
+    text-align:center;
+}
 
-        .manifesto {
-            background: var(--subtle);
-            padding: 15px;
-            border-left: 4px solid var(--accent);
-            margin: 20px 0;
-            text-align: left;
-        }
+.manifesto {
+    background:var(--subtle);
+    padding:15px;
+    border-left:4px solid var(--accent);
+    margin:20px 0;
+}
 
-        textarea, input {
-            width: 100%;
-            background: #000;
-            color: var(--accent);
-            border: 1px solid #333;
-            padding: 10px;
-            margin-bottom: 10px;
-            font-family: inherit;
-        }
+textarea, input {
+    width:100%;
+    padding:10px;
+    margin-bottom:10px;
+    background:#000;
+    color:var(--accent);
+    border:1px solid #333;
+}
 
-        textarea { height: 140px; }
+textarea { height:140px; }
 
-        button {
-            width: 100%;
-            padding: 15px;
-            background: var(--accent);
-            color: #000;
-            border: none;
-            font-weight: bold;
-            cursor: pointer;
-        }
+button {
+    width:100%;
+    padding:15px;
+    background:var(--accent);
+    border:none;
+    font-weight:bold;
+    cursor:pointer;
+}
 
-        #overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            display: none;
-            justify-content: center;
-            align-items: center;
-            background: rgba(0,0,0,0.9);
-            z-index: 10;
-            flex-direction: column;
-        }
+#overlay {
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.9);
+    display:none;
+    justify-content:center;
+    align-items:center;
+    flex-direction:column;
+    z-index:10;
+}
 
-        .scanline {
-            width: 100%;
-            height: 2px;
-            background: var(--accent);
-            position: absolute;
-            animation: scan 2s linear infinite;
-            opacity: 0.3;
-        }
-
-        @keyframes scan {
-            from { top: 0; }
-            to { top: 100%; }
-        }
-
-        .decrypt-text {
-            color: var(--accent);
-            font-size: 1.2rem;
-        }
-
-        #results {
-            display:none;
-            margin-top:20px;
-            text-align:left;
-            border:1px solid #333;
-            padding:15px;
-            background:#050505;
-        }
-    </style>
+#results {
+    display:none;
+    margin-top:20px;
+    padding:15px;
+    background:#050505;
+    border:1px solid #333;
+}
+</style>
 </head>
 
 <body>
 
 <div id="overlay">
-    <div class="scanline"></div>
-    <div class="decrypt-text" id="status">ANALYZING INPUT...</div>
+    <div id="status" style="color:#00ff41;">ANALYZING...</div>
 </div>
 
 <div class="container">
 
-    <h1>GT SYSTEMS</h1>
+<h1>GT SYSTEMS</h1>
 
-    <div class="manifesto">
-        "The oblong box in the corner of the room doesn't inform you; it programs you."
-    </div>
+<div class="manifesto">
+"The oblong box in the corner doesn't inform you; it programs you."
+</div>
 
-    <input id="videoUrl" placeholder="Paste video URL (optional)" />
+<input id="videoUrl" placeholder="Video URL (optional)" />
+<textarea id="input" placeholder="Paste text or article (optional)"></textarea>
 
-    <textarea id="input" placeholder="Paste article, post, or transcript (optional)"></textarea>
+<button onclick="run()">ANALYZE GROUND TRUTH</button>
 
-    <button onclick="startDecryption()">ANALYZE GROUND TRUTH</button>
-
-    <div id="results">
-        <h3>RESULTS</h3>
-        <div>Score: <span id="score"></span></div>
-        <div>Triggers: <span id="triggers"></span></div>
-        <div>Summary: <span id="summary"></span></div>
-        <div>Node: <span id="node"></span></div>
-    </div>
+<div id="results">
+    <div>Score: <span id="score">-</span></div>
+    <div>Triggers: <span id="triggers">-</span></div>
+    <div>Summary: <span id="summary">-</span></div>
+    <div>Node: <span id="node">-</span></div>
+</div>
 
 </div>
 
 <script>
 
-async function startDecryption() {
+function safeArray(v) {
+    return Array.isArray(v) ? v : [];
+}
 
-    const text = document.getElementById("input").value.trim();
-    const url = document.getElementById("videoUrl").value.trim();
+function safeText(v, fallback="No data") {
+    return (typeof v === "string" && v.trim()) ? v : fallback;
+}
 
-    if (!text && !url) {
-        return alert("Input text or URL required.");
+async function run() {
+
+const text = document.getElementById("input").value.trim();
+const url = document.getElementById("videoUrl").value.trim();
+
+if (!text && !url) {
+    alert("Provide input or URL");
+    return;
+}
+
+document.getElementById("overlay").style.display = "flex";
+
+const status = document.getElementById("status");
+
+const msgs = [
+    "ANALYZING INPUT...",
+    "EXTRACTING SIGNAL...",
+    "EVALUATING LANGUAGE...",
+    "FINALIZING..."
+];
+
+let i = 0;
+const anim = setInterval(() => {
+    status.innerText = msgs[i % msgs.length];
+    i++;
+}, 1000);
+
+try {
+
+    let endpoint = "/api/analyze";
+    let payload = { text };
+
+    if (url) {
+        endpoint = "/api/video-url";
+        payload = { url };
     }
 
-    const overlay = document.getElementById("overlay");
-    const status = document.getElementById("status");
+    const res = await fetch(endpoint, {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify(payload)
+    });
 
-    overlay.style.display = "flex";
+    const data = await res.json();
 
-    const messages = [
-        "BYPASSING FILTERS...",
-        "IDENTIFYING HOOKS...",
-        "STRIPPING NOISE...",
-        "ANALYZING INPUT..."
-    ];
+    clearInterval(anim);
+    document.getElementById("overlay").style.display = "none";
 
-    let i = 0;
-    const anim = setInterval(() => {
-        status.innerText = messages[i % messages.length];
-        i++;
-    }, 1200);
-
-    try {
-
-        let endpoint = "/api/analyze";
-        let payload = { text };
-
-        if (url) {
-            endpoint = "/api/video-url";
-            payload = { url };
-        }
-
-        const response = await fetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
-
-        const data = await response.json();
-
-        clearInterval(anim);
-        overlay.style.display = "none";
-
-        if (!response.ok) {
-            throw new Error(data.error || "Analysis failed");
-        }
-
-        render(data);
-
-    } catch (err) {
-        clearInterval(anim);
-        overlay.style.display = "none";
-        alert(err.message);
+    if (!res.ok || data.error) {
+        throw new Error(data.error || "Request failed");
     }
+
+    render(data);
+
+} catch (e) {
+    clearInterval(anim);
+    document.getElementById("overlay").style.display = "none";
+    alert(e.message);
+}
+
 }
 
 function render(data) {
 
-    document.getElementById("results").style.display = "block";
+document.getElementById("results").style.display = "block";
 
-    document.getElementById("score").innerText =
-        data.noise_score ?? 0;
+document.getElementById("score").innerText =
+    typeof data.noise_score === "number"
+        ? data.noise_score
+        : 0;
 
-    document.getElementById("triggers").innerText =
-        (data.emotional_triggers || []).join(", ");
+document.getElementById("triggers").innerText =
+    safeArray(data.emotional_triggers).join(", ");
 
-    document.getElementById("summary").innerText =
-        data.logic_breakdown?.summary || "No summary available";
+document.getElementById("summary").innerText =
+    safeText(data?.logic_breakdown?.summary);
 
-    document.getElementById("node").innerText =
-        data.node || "unknown";
+document.getElementById("node").innerText =
+    data.node || "unknown";
+
 }
 
 </script>
