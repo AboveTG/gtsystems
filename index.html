@@ -25,15 +25,9 @@ body {
     padding:20px;
 }
 
-.container {
-    width:100%;
-    max-width:720px;
-}
+.container { width:100%; max-width:720px; }
 
-h1 {
-    color:var(--accent);
-    text-align:center;
-}
+h1 { color:var(--accent); text-align:center; }
 
 .manifesto {
     background:var(--subtle);
@@ -42,16 +36,14 @@ h1 {
     margin:20px 0;
 }
 
-textarea, input {
+textarea {
     width:100%;
-    padding:10px;
-    margin-bottom:10px;
+    height:120px;
     background:#000;
     color:var(--accent);
     border:1px solid #333;
+    padding:10px;
 }
-
-textarea { height:140px; }
 
 button {
     width:100%;
@@ -59,7 +51,6 @@ button {
     background:var(--accent);
     border:none;
     font-weight:bold;
-    cursor:pointer;
 }
 
 #overlay {
@@ -70,15 +61,19 @@ button {
     justify-content:center;
     align-items:center;
     flex-direction:column;
-    z-index:10;
 }
 
 #results {
     display:none;
     margin-top:20px;
-    padding:15px;
-    background:#050505;
+    background:#111;
     border:1px solid #333;
+    padding:15px;
+}
+
+.error {
+    color:#ff3e3e;
+    margin-top:10px;
 }
 </style>
 </head>
@@ -94,51 +89,52 @@ button {
 <h1>GT SYSTEMS</h1>
 
 <div class="manifesto">
-"The oblong box in the corner doesn't inform you; it programs you."
+"Independent signal extraction system"
 </div>
 
-<input id="videoUrl" placeholder="Video URL (optional)" />
-<textarea id="input" placeholder="Paste text or article (optional)"></textarea>
+<textarea id="input"></textarea>
 
-<button onclick="run()">ANALYZE GROUND TRUTH</button>
+<button onclick="run()">ANALYZE</button>
 
 <div id="results">
-    <div>Score: <span id="score">-</span></div>
-    <div>Triggers: <span id="triggers">-</span></div>
-    <div>Summary: <span id="summary">-</span></div>
-    <div>Node: <span id="node">-</span></div>
+
+    <div class="error" id="error"></div>
+
+    <p>Score: <span id="score">-</span>%</p>
+
+    <p>Confidence: <span id="confidence">-</span></p>
+
+    <p>Triggers: <span id="triggers"></span></p>
+
+    <p>Summary: <span id="summary"></span></p>
+
+    <p>Observations:</p>
+    <ul id="observations"></ul>
+
+    <p>Framing:</p>
+    <ul id="framing"></ul>
+
+    <p style="color:#666;">Node: <span id="node"></span></p>
+
 </div>
 
 </div>
 
 <script>
 
-function safeArray(v) {
-    return Array.isArray(v) ? v : [];
-}
-
-function safeText(v, fallback="No data") {
-    return (typeof v === "string" && v.trim()) ? v : fallback;
-}
-
 async function run() {
 
 const text = document.getElementById("input").value.trim();
-const url = document.getElementById("videoUrl").value.trim();
-
-if (!text && !url) {
-    alert("Provide input or URL");
-    return;
-}
+if (!text) return alert("Input required");
 
 document.getElementById("overlay").style.display = "flex";
 
 const status = document.getElementById("status");
 
 const msgs = [
-    "ANALYZING INPUT...",
+    "ANALYZING...",
     "EXTRACTING SIGNAL...",
-    "EVALUATING LANGUAGE...",
+    "SCORING LANGUAGE...",
     "FINALIZING..."
 ];
 
@@ -150,18 +146,10 @@ const anim = setInterval(() => {
 
 try {
 
-    let endpoint = "/api/analyze";
-    let payload = { text };
-
-    if (url) {
-        endpoint = "/api/video-url";
-        payload = { url };
-    }
-
-    const res = await fetch(endpoint, {
+    const res = await fetch("/api/analyze", {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ text })
     });
 
     const data = await res.json();
@@ -170,33 +158,62 @@ try {
     document.getElementById("overlay").style.display = "none";
 
     if (!res.ok || data.error) {
-        throw new Error(data.error || "Request failed");
+        throw new Error(data.error || "Analysis failed");
     }
 
     render(data);
 
 } catch (e) {
+
     clearInterval(anim);
     document.getElementById("overlay").style.display = "none";
-    alert(e.message);
+
+    document.getElementById("results").style.display = "block";
+    document.getElementById("error").innerText = e.message;
+
 }
 
+}
+
+function safeArray(v) {
+    return Array.isArray(v) ? v : [];
 }
 
 function render(data) {
 
 document.getElementById("results").style.display = "block";
 
+document.getElementById("error").innerText = "";
+
 document.getElementById("score").innerText =
-    typeof data.noise_score === "number"
-        ? data.noise_score
-        : 0;
+    data.noise_score ?? 0;
+
+document.getElementById("confidence").innerText =
+    data.confidence ?? 0;
 
 document.getElementById("triggers").innerText =
     safeArray(data.emotional_triggers).join(", ");
 
 document.getElementById("summary").innerText =
-    safeText(data?.logic_breakdown?.summary);
+    data?.logic_breakdown?.summary || "No summary";
+
+const obs = document.getElementById("observations");
+obs.innerHTML = "";
+safeArray(data?.logic_breakdown?.key_observations)
+    .forEach(x => {
+        const li = document.createElement("li");
+        li.textContent = x;
+        obs.appendChild(li);
+    });
+
+const fr = document.getElementById("framing");
+fr.innerHTML = "";
+safeArray(data?.logic_breakdown?.framing_notes)
+    .forEach(x => {
+        const li = document.createElement("li");
+        li.textContent = x;
+        fr.appendChild(li);
+    });
 
 document.getElementById("node").innerText =
     data.node || "unknown";
