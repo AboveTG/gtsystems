@@ -11,10 +11,11 @@ if (!text || typeof text !== "string") {
 }
 
 const SCHEMA = `
-Return ONLY valid JSON.
+Return ONLY valid JSON. No markdown. No explanation.
 
+Required format:
 {
-  "noise_score": number (0-100),
+  "noise_score": number,
   "emotional_triggers": string[],
   "logic_breakdown": {
     "summary": string,
@@ -33,57 +34,54 @@ const providers = [
             "Content-Type": "application/json"
         },
         model: "llama-3.3-70b-versatile"
-    },
-    {
-        name: "OPENROUTER",
-        url: "https://openrouter.ai/api/v1/chat/completions",
-        headers: {
-            Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-            "Content-Type": "application/json"
-        },
-        model: "meta-llama/llama-3-8b-instruct:free"
     }
 ];
 
-// -------------------- SAFE PARSING --------------------
+// ---------------- CLEANER PARSER ----------------
 
-function safeJSONParse(raw, provider) {
+function extractJSON(raw) {
+    if (!raw) return null;
 
-    if (!raw) {
-        console.warn(`${provider}: empty response`);
-        return null;
-    }
+    // remove code fences
+    let cleaned = raw
+        .replace(/```json/g, "")
+        .replace(/```/g, "")
+        .trim();
 
-    const trimmed = raw.trim();
+    // extract first JSON object (critical fix)
+    const first = cleaned.indexOf("{");
+    const last = cleaned.lastIndexOf("}");
 
-    if (trimmed.startsWith("<")) {
-        console.warn(`${provider}: HTML response blocked`);
-        return null;
-    }
+    if (first === -1 || last === -1) return null;
+
+    cleaned = cleaned.slice(first, last + 1);
 
     try {
-        return JSON.parse(trimmed);
-    } catch (err) {
-        console.warn(`${provider}: invalid JSON`);
+        return JSON.parse(cleaned);
+    } catch {
         return null;
     }
 }
 
-// -------------------- NORMALIZATION --------------------
+// ---------------- NORMALIZATION ----------------
 
 function normalize(data) {
 
-    return {
-        noise_score: Number(data?.noise_score ?? 0),
+    if (!data) {
+        return fallback("No valid model output");
+    }
 
-        emotional_triggers: Array.isArray(data?.emotional_triggers)
+    return {
+        noise_score: Number(data.noise_score ?? 0),
+
+        emotional_triggers: Array.isArray(data.emotional_triggers)
             ? data.emotional_triggers
             : [],
 
         logic_breakdown: {
             summary:
                 data?.logic_breakdown?.summary ||
-                "No summary available",
+                "Analysis completed with limited signal quality.",
 
             key_observations: Array.isArray(data?.logic_breakdown?.key_observations)
                 ? data.logic_breakdown.key_observations
@@ -96,7 +94,21 @@ function normalize(data) {
     };
 }
 
-// -------------------- MAIN LOOP --------------------
+// ---------------- FALLBACK (IMPORTANT FIX) ----------------
+
+function fallback(reason) {
+    return {
+        noise_score: 0,
+        emotional_triggers: [],
+        logic_breakdown: {
+            summary: `No structured output generated (${reason}).`,
+            key_observations: [],
+            framing_notes: []
+        }
+    };
+}
+
+// ---------------- MAIN LOOP ----------------
 
 for (const p of providers) {
 
@@ -117,27 +129,25 @@ for (const p of providers) {
         const raw = await response.text();
 
         if (!response.ok) {
-            console.warn(`${p.name} HTTP error:`, raw);
+            console.warn(p.name, "HTTP error:", raw);
             continue;
         }
 
-        const parsed = safeJSONParse(raw, p.name);
+        const parsed = extractJSON(raw);
 
-        if (!parsed) continue;
-
-        const result = normalize(parsed);
+        const normalized = normalize(parsed);
 
         return res.status(200).json({
-            ...result,
+            ...normalized,
             node: p.name
         });
 
     } catch (err) {
-        console.error(`${p.name} crash:`, err);
+        console.error(p.name, err);
     }
 }
 
 return res.status(500).json({
-    error: "All analysis nodes failed"
+    error: "All nodes failed"
 });
 }
