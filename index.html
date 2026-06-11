@@ -34,17 +34,18 @@
     <div class="container">
         <h1>GT SYSTEMS</h1>
         <p style="color: #666; font-size: 0.8rem; margin-top: 5px;">[ VERSION 1.1 // MULTI-NODE FALLBACK ]</p>
-        <div class="manifesto">"The box in the corner doesn't inform you; it programs you. An independent person is the only thing a system cannot own."</div>
-        <textarea id="input" placeholder="PASTE THE 'NOISE' HERE..."></textarea>
+        <div class="manifesto">"The oblong box in the corner of the room doesn't inform you; it programs you. An independent person is the only thing a system cannot own."</div>
+        <textarea id="input" placeholder="PASTE THE 'ARTICLE/INFO/STORY' HERE..."></textarea>
         <button id="main-btn" onclick="startDecryption()">Extract Ground Truth</button>
         <div id="results-area">
             <div class="meter-container">
-                <span style="font-size: 1.1rem;">PROPRIETARY NOISE LEVEL: <span id="noise-percent" style="color:var(--accent)">0</span>%</span>
+                <span style="font-size: 1.1rem;">PERSUASION LEVEL: <span id="noise-percent" style="color:var(--accent)">0</span>%</span>
+                <div style="font-size:0.75rem;color:#666;margin-top:5px;">Higher scores indicate more emotional, persuasive, or narrative-driven language.</div>
                 <div id="noise-bar"><div id="noise-fill"></div></div>
             </div>
-            <span class="output-label">Detected Triggers:</span>
+            <span class="output-label">Persuasion Techniques Detected:</span>
             <div id="triggers-output" style="color: #fff; margin-bottom: 15px;"></div>
-            <span class="output-label">Logic Breakdown:</span>
+            <span class="output-label">Analysis Summary:</span>
             <div id="analysis-output"></div>
             <p id="node-info" style="font-size:0.6rem; color:#333; margin-top:10px; text-align:right;"></p>
         </div>
