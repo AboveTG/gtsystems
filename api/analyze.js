@@ -19,19 +19,27 @@ try {
             messages: [
                 {
                     role: "system",
-                    content: "Return ONLY JSON: noise_score, emotional_triggers, logic_breakdown"
+                    content: "Return ONLY JSON with keys: noise_score, emotional_triggers, logic_breakdown"
                 },
-                { role: "user", content: text }
+                {
+                    role: "user",
+                    content: text
+                }
             ]
         })
     });
 
     const data = await response.json();
-    const content = data.choices[0]?.message?.content;
 
-    res.status(200).json(JSON.parse(content));
+    const content = data?.choices?.[0]?.message?.content;
+
+    if (!content) {
+        return res.status(500).json({ error: "No model output" });
+    }
+
+    return res.status(200).json(JSON.parse(content));
 
 } catch (err) {
-    res.status(500).json({ error: "Groq failed" });
+    return res.status(500).json({ error: "Groq failed" });
 }
 }
