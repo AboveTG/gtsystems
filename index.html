@@ -2,186 +2,90 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GT Systems | Ground Truth</title>
+<title>GT Systems</title>
 
 <style>
-:root {
-    --bg:#0a0a0a;
-    --text:#e0e0e0;
-    --accent:#00ff41;
-    --subtle:#1a1a1a;
-    --danger:#ff3e3e;
-}
-
 body {
-    background:var(--bg);
-    color:var(--text);
+    background:#0a0a0a;
+    color:#e0e0e0;
     font-family:monospace;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    min-height:100vh;
-    margin:0;
-    padding:20px;
-}
-
-.container {
-    max-width:700px;
-    width:100%;
-    text-align:center;
-}
-
-h1 {
-    color:var(--accent);
-    letter-spacing:4px;
+    padding:40px;
 }
 
 textarea {
     width:100%;
-    height:150px;
+    height:160px;
     background:#000;
-    color:var(--accent);
+    color:#00ff41;
     border:1px solid #333;
-    padding:10px;
 }
 
 button {
     width:100%;
     padding:15px;
     margin-top:10px;
-    background:var(--accent);
+    background:#00ff41;
     border:none;
     cursor:pointer;
-    font-weight:bold;
 }
 
-#results-area {
-    display:none;
+#results {
     margin-top:20px;
-    text-align:left;
+    display:none;
     border:1px solid #333;
     padding:15px;
-    background:#050505;
-}
-
-#noise-bar {
-    width:100%;
-    background:#222;
-    height:10px;
-}
-
-#noise-fill {
-    height:10px;
-    width:0%;
-    background:var(--accent);
-}
-
-.output-label {
-    color:var(--accent);
-    font-size:0.8rem;
-    margin-top:10px;
-    display:block;
-}
-
-#analysis-output {
-    white-space:pre-wrap;
-    color:#ccc;
 }
 </style>
 </head>
 
 <body>
 
-<div class="container">
+<h2>GT SYSTEMS</h2>
 
-<h1>GT SYSTEMS</h1>
+<textarea id="input"></textarea>
 
-<textarea id="input" placeholder="PASTE ANY (ARTICLE / STORY) HERE"></textarea>
+<button onclick="run()">ANALYZE</button>
 
-<button onclick="startDecryption()">Extract Ground Truth</button>
+<div id="results">
 
-<div id="results-area">
+    <h3>Score: <span id="score">0</span></h3>
 
     <div>
-        NOISE LEVEL: <span id="noise-percent">0</span>%
-        <div id="noise-bar">
-            <div id="noise-fill"></div>
-        </div>
+        <strong>Triggers</strong>
+        <div id="triggers"></div>
     </div>
 
-    <span class="output-label">Triggers</span>
-    <div id="triggers-output"></div>
-
-    <span class="output-label">Analysis</span>
-    <div id="analysis-output"></div>
-
-    <p id="node-info"></p>
-
-</div>
+    <div>
+        <strong>Analysis</strong>
+        <pre id="analysis"></pre>
+    </div>
 
 </div>
 
 <script>
-async function startDecryption() {
+async function run() {
 
-    const text = document.getElementById("input").value;
+    const text = document.getElementById("input").value.trim();
     if (!text) return alert("Input required");
 
-    const nodes = [
-        { name: "GROQ", url: "/api/groq" },
-        { name: "GEMINI", url: "/api/gemini" },
-        { name: "OPENROUTER", url: "/api/openrouter" }
-    ];
+    const res = await fetch("/api/groq", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text })
+    });
 
-    let success = false;
+    const data = await res.json();
 
-    for (const node of nodes) {
+    document.getElementById("results").style.display = "block";
 
-        try {
+    document.getElementById("score").innerText =
+        data.noise_score ?? 0;
 
-            const res = await fetch(node.url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text })
-            });
-
-            if (!res.ok) continue;
-
-            const data = await res.json();
-
-            render(data, node.name);
-
-            success = true;
-            break;
-
-        } catch (e) {
-            console.warn(node.name, "failed");
-        }
-    }
-
-    if (!success) {
-        alert("ALL NODES FAILED");
-    }
-}
-
-function render(data, node) {
-
-    document.getElementById("results-area").style.display = "block";
-
-    document.getElementById("noise-percent").innerText = data.noise_score ?? 0;
-
-    document.getElementById("noise-fill").style.width =
-        (data.noise_score ?? 0) + "%";
-
-    document.getElementById("triggers-output").innerText =
+    document.getElementById("triggers").innerText =
         (data.emotional_triggers || []).join(", ");
 
-    document.getElementById("analysis-output").innerText =
+    document.getElementById("analysis").innerText =
         data.logic_breakdown || "No analysis returned";
-
-    document.getElementById("node-info").innerText =
-        "SOURCE: " + node;
 }
 </script>
 
