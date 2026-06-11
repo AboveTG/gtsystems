@@ -4,281 +4,112 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GT Systems | Ground Truth</title>
-    <script defer src="https://cdn.vercel-insights.com/v1/script.js"></script>
-    <!-- Vercel Speed Insights -->
-    <script>
-        window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
-    </script>
-    <script defer src="/_vercel/speed-insights/script.js"></script>
     <style>
-        :root {
-            --bg: #0a0a0a;
-            --text: #e0e0e0;
-            --accent: #00ff41;
-            --subtle: #1a1a1a;
-            --danger: #ff3e3e;
-        }
-
-        body {
-            background: var(--bg);
-            color: var(--text);
-            font-family: 'Courier New', monospace;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 20px;
-            box-sizing: border-box;
-        }
-
-        .container {
-            max-width: 700px;
-            width: 100%;
-            text-align: center;
-            position: relative;
-        }
-
-        h1 {
-            font-size: 2.5rem;
-            color: var(--accent);
-            margin: 0;
-            text-shadow: 0 0 10px rgba(0,255,65,0.5);
-            letter-spacing: 4px;
-        }
-
-        .manifesto {
-            background: var(--subtle);
-            padding: 20px;
-            border: 1px solid #333;
-            margin: 25px 0;
-            border-left: 4px solid var(--accent);
-            text-align: left;
-            font-style: italic;
-        }
-
-        textarea {
-            width: 100%;
-            height: 150px;
-            background: #000;
-            border: 1px solid #333;
-            color: var(--accent);
-            padding: 15px;
-            box-sizing: border-box;
-            font-family: inherit;
-            font-size: 1rem;
-            resize: none;
-            outline: none;
-            transition: border 0.3s;
-        }
-
-        textarea:focus {
-            border-color: var(--accent);
-        }
-
-        button {
-            background: var(--accent);
-            color: #000;
-            border: none;
-            padding: 15px 40px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 20px;
-            width: 100%;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            transition: 0.3s;
-        }
-
-        button:hover {
-            background: #fff;
-            box-shadow: 0 0 20px var(--accent);
-        }
-
-        /* Results Area */
-        #results-area {
-            display: none;
-            margin-top: 30px;
-            text-align: left;
-            border: 1px solid #333;
-            padding: 20px;
-            background: #050505;
-        }
-
-        .meter-container {
-            margin: 20px 0;
-        }
-
-        #noise-bar {
-            width: 100%;
-            background: #222;
-            height: 12px;
-            border-radius: 6px;
-            overflow: hidden;
-            margin-top: 8px;
-        }
-
-        #noise-fill {
-            height: 100%;
-            width: 0%;
-            background: linear-gradient(90deg, var(--accent), var(--danger));
-            transition: width 1.5s ease-in-out;
-        }
-
-        .output-label {
-            color: var(--accent);
-            font-weight: bold;
-            margin-top: 15px;
-            display: block;
-            text-transform: uppercase;
-            font-size: 0.8rem;
-        }
-
-        #analysis-output {
-            margin-top: 10px;
-            white-space: pre-wrap;
-            font-size: 0.95rem;
-            color: #ccc;
-            border-top: 1px solid #222;
-            padding-top: 10px;
-        }
-
-        /* Animation Overlay */
-        #overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.95);
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 100;
-        }
-
-        .decrypt-text {
-            color: var(--accent);
-            font-size: 1.2rem;
-            letter-spacing: 2px;
-        }
-
-        .scanline {
-            width: 100%;
-            height: 2px;
-            background: var(--accent);
-            position: absolute;
-            top: 0;
-            animation: scan 2s linear infinite;
-            opacity: 0.2;
-        }
-
-        @keyframes scan {
-            from { top: 0; }
-            to { top: 100%; }
-        }
-
-        footer {
-            margin-top: 40px;
-            font-size: 0.7rem;
-            color: #444;
-            letter-spacing: 1px;
-        }
+        :root { --bg: #0a0a0a; --text: #e0e0e0; --accent: #00ff41; --subtle: #1a1a1a; --danger: #ff3e3e; }
+        body { background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+        .container { max-width: 700px; width: 100%; text-align: center; position: relative; }
+        h1 { font-size: 2.5rem; color: var(--accent); margin: 0; text-shadow: 0 0 10px rgba(0,255,65,0.5); letter-spacing: 4px; }
+        .manifesto { background: var(--subtle); padding: 20px; border: 1px solid #333; margin: 25px 0; border-left: 4px solid var(--accent); text-align: left; font-style: italic; }
+        textarea { width: 100%; height: 150px; background: #000; border: 1px solid #333; color: var(--accent); padding: 15px; box-sizing: border-box; font-family: inherit; font-size: 1rem; resize: none; outline: none; transition: border 0.3s; }
+        textarea:focus { border-color: var(--accent); }
+        button { background: var(--accent); color: #000; border: none; padding: 15px 40px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; letter-spacing: 2px; text-transform: uppercase; transition: 0.3s; }
+        button:hover { background: #fff; box-shadow: 0 0 20px var(--accent); }
+        #results-area { display: none; margin-top: 30px; text-align: left; border: 1px solid #333; padding: 20px; background: #050505; }
+        #noise-bar { width: 100%; background: #222; height: 12px; border-radius: 6px; overflow: hidden; margin-top: 8px; }
+        #noise-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--danger)); transition: width 1.5s ease-in-out; }
+        .output-label { color: var(--accent); font-weight: bold; margin-top: 15px; display: block; text-transform: uppercase; font-size: 0.8rem; }
+        #analysis-output { margin-top: 10px; white-space: pre-wrap; font-size: 0.95rem; color: #ccc; border-top: 1px solid #222; padding-top: 10px; }
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+        .decrypt-text { color: var(--accent); font-size: 1.2rem; letter-spacing: 2px; text-align: center; }
+        .scanline { width: 100%; height: 2px; background: var(--accent); position: absolute; top: 0; animation: scan 2s linear infinite; opacity: 0.2; }
+        @keyframes scan { from { top: 0; } to { top: 100%; } }
+        footer { margin-top: 40px; font-size: 0.7rem; color: #444; letter-spacing: 1px; }
     </style>
 </head>
 <body>
-
     <div id="overlay">
         <div class="scanline"></div>
-        <div class="decrypt-text" id="status">INITIALIZING NODE...</div>
+        <div class="decrypt-text" id="status">INITIALIZING NODES...</div>
     </div>
-
     <div class="container">
         <h1>GT SYSTEMS</h1>
-        <p style="color: #666; font-size: 0.8rem; margin-top: 5px;">[ VERSION 1.0 // SOVEREIGN ANALYTICS ]</p>
-        
-        <div class="manifesto">
-            "The box in the corner doesn't inform you; it programs you. An independent person is the only thing a system cannot own."
-        </div>
-
+        <p style="color: #666; font-size: 0.8rem; margin-top: 5px;">[ VERSION 1.1 // MULTI-NODE FALLBACK ]</p>
+        <div class="manifesto">"The box in the corner doesn't inform you; it programs you. An independent person is the only thing a system cannot own."</div>
         <textarea id="input" placeholder="PASTE THE 'NOISE' HERE..."></textarea>
-        
         <button id="main-btn" onclick="startDecryption()">Extract Ground Truth</button>
-
         <div id="results-area">
             <div class="meter-container">
                 <span style="font-size: 1.1rem;">PROPRIETARY NOISE LEVEL: <span id="noise-percent" style="color:var(--accent)">0</span>%</span>
-                <div id="noise-bar">
-                    <div id="noise-fill"></div>
-                </div>
+                <div id="noise-bar"><div id="noise-fill"></div></div>
             </div>
-
             <span class="output-label">Detected Triggers:</span>
             <div id="triggers-output" style="color: #fff; margin-bottom: 15px;"></div>
-
             <span class="output-label">Logic Breakdown:</span>
             <div id="analysis-output"></div>
+            <p id="node-info" style="font-size:0.6rem; color:#333; margin-top:10px; text-align:right;"></p>
         </div>
-
-        <footer>
-            © 2026 GROUNDTRUTH SYSTEMS // NO DATA COLLECTED. NO PERMISSION ASKED.
-        </footer>
+        <footer>© 2026 GROUNDTRUTH SYSTEMS // NO DATA COLLECTED. NO PERMISSION ASKED.</footer>
     </div>
 
     <script>
         async function startDecryption() {
             const textInput = document.getElementById('input').value;
-            if(!textInput) return alert("System requires input to analyze.");
+            if(!textInput) return alert("System requires input.");
             
             const overlay = document.getElementById('overlay');
             const status = document.getElementById('status');
-            const results = document.getElementById('results-area');
+            const resultsArea = document.getElementById('results-area');
             const btn = document.getElementById('main-btn');
 
             overlay.style.display = 'flex';
             btn.disabled = true;
-            
-            const messages = ["ACCESSING API ROUTE...", "STRIPPING EMOTIONAL HOOKS...", "IDENTIFYING FALLACIES...", "FINALIZING GROUND TRUTH..."];
-            let msgIdx = 0;
-            const msgInterval = setInterval(() => {
-                if(msgIdx < messages.length) {
-                    status.innerText = messages[msgIdx];
-                    msgIdx++;
+
+            const nodes = [
+                { name: 'GROQ_NODE', url: '/api/groq' },
+                { name: 'GEMINI_NODE', url: '/api/gemini' },
+                { name: 'OPENROUTER_NODE', url: '/api/openrouter' }
+            ];
+
+            let success = false;
+
+            for (const node of nodes) {
+                status.innerText = `CONNECTING TO ${node.name}...`;
+                try {
+                    const response = await fetch(node.url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: textInput })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        renderResults(data, node.name);
+                        success = true;
+                        break;
+                    }
+                } catch (e) {
+                    console.warn(`${node.name} OFFLINE. SWITCHING...`);
                 }
-            }, 800);
-
-            try {
-                const response = await fetch('/api/analyze', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: textInput })
-                });
-                
-                if (!response.ok) throw new Error('System error');
-                
-                const data = await response.json();
-
-                clearInterval(msgInterval);
-                overlay.style.display = 'none';
-                results.style.display = 'block';
-                btn.disabled = false;
-
-                document.getElementById('noise-percent').innerText = data.noise_score;
-                document.getElementById('noise-fill').style.width = data.noise_score + '%';
-                document.getElementById('triggers-output').innerText = 
-                    Array.isArray(data.emotional_triggers) ? data.emotional_triggers.join(', ') : 'None detected.';
-                document.getElementById('analysis-output').innerText = 
-                    data.logic_breakdown || data.explanations || "Analysis complete.";
-
-                results.scrollIntoView({ behavior: 'smooth' });
-
-            } catch (error) {
-                clearInterval(msgInterval);
-                overlay.style.display = 'none';
-                btn.disabled = false;
-                alert("SYSTEM ERROR: UNABLE TO REACH THE CORE. CHECK YOUR API KEY ON VERCEL.");
             }
+
+            overlay.style.display = 'none';
+            btn.disabled = false;
+
+            if (!success) {
+                alert("CRITICAL ERROR: ALL GROUNDTRUTH NODES ARE CURRENTLY BLOCKED OR OFFLINE.");
+            }
+        }
+
+        function renderResults(data, nodeName) {
+            document.getElementById('results-area').style.display = 'block';
+            document.getElementById('noise-percent').innerText = data.noise_score;
+            document.getElementById('noise-fill').style.width = data.noise_score + '%';
+            document.getElementById('triggers-output').innerText = 
+                Array.isArray(data.emotional_triggers) ? data.emotional_triggers.join(', ') : 'None detected.';
+            document.getElementById('analysis-output').innerText = 
+                data.logic_breakdown || data.explanations || "Analysis complete.";
+            document.getElementById('node-info').innerText = `DATA SOURCE: ${nodeName}`;
+            document.getElementById('results-area').scrollIntoView({ behavior: 'smooth' });
         }
     </script>
 </body>
