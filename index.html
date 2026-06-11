@@ -1,173 +1,127 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GT Systems | Ground Truth</title>
-    <style>
-        :root { --bg: #0a0a0a; --text: #e0e0e0; --accent: #00ff41; --subtle: #1a1a1a; --danger: #ff3e3e; }
-        body { background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
-        .container { max-width: 700px; width: 100%; text-align: center; position: relative; }
-        h1 { font-size: 2.5rem; color: var(--accent); margin: 0; text-shadow: 0 0 10px rgba(0,255,65,0.5); letter-spacing: 4px; }
-        .manifesto { background: var(--subtle); padding: 20px; border: 1px solid #333; margin: 25px 0; border-left: 4px solid var(--accent); text-align: left; font-style: italic; }
-        textarea { width: 100%; height: 150px; background: #000; border: 1px solid #333; color: var(--accent); padding: 15px; box-sizing: border-box; font-family: inherit; font-size: 1rem; resize: none; }
-        textarea:focus { border-color: var(--accent); }
-        button { background: var(--accent); color: #000; border: none; padding: 15px 40px; font-weight: bold; cursor: pointer; margin-top: 20px; width: 100%; letter-spacing: 2px; text-transform: uppercase; }
-        button:hover { background: #fff; box-shadow: 0 0 20px var(--accent); }
-        #results-area { display: none; margin-top: 30px; text-align: left; border: 1px solid #333; padding: 20px; background: #050505; }
-        #noise-bar { width: 100%; background: #222; height: 12px; border-radius: 6px; overflow: hidden; margin-top: 8px; }
-        #noise-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--danger)); transition: width 1.5s ease-in-out; }
-        .output-label { color: var(--accent); font-weight: bold; margin-top: 15px; display: block; text-transform: uppercase; font-size: 0.8rem; }
-        #analysis-output { margin-top: 10px; white-space: pre-wrap; font-size: 0.95rem; color: #ccc; border-top: 1px solid #222; padding-top: 10px; }
-        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 999; }
-        .decrypt-text { color: var(--accent); font-size: 1.2rem; letter-spacing: 2px; text-align: center; }
-        .scanline { width: 100%; height: 2px; background: var(--accent); position: absolute; top: 0; animation: scan 2s linear infinite; opacity: 0.2; }
-        @keyframes scan { from { top: 0; } to { top: 100%; } }
-        footer { margin-top: 40px; font-size: 0.7rem; color: #444; letter-spacing: 1px; }
-    </style>
+<meta charset="UTF-8">
+<title>GT Systems</title>
+
+<style>
+body {
+    background:#0a0a0a;
+    color:#e0e0e0;
+    font-family:monospace;
+    padding:40px;
+}
+
+textarea {
+    width:100%;
+    height:160px;
+    background:#000;
+    color:#00ff41;
+    border:1px solid #333;
+    padding:10px;
+}
+
+button {
+    width:100%;
+    padding:15px;
+    margin-top:10px;
+    background:#00ff41;
+    border:none;
+    cursor:pointer;
+}
+
+#results {
+    margin-top:20px;
+    border:1px solid #333;
+    padding:15px;
+    display:none;
+}
+
+.section {
+    margin-top:10px;
+}
+
+h3 {
+    color:#00ff41;
+}
+</style>
 </head>
+
 <body>
-    <div id="overlay">
-        <div class="scanline"></div>
-        <div class="decrypt-text" id="status">INITIALIZING NODES...</div>
-    </div>
-    <div class="container">
-        <h1>GT SYSTEMS</h1>
-        <p style="color: #666; font-size: 0.8rem; margin-top: 5px;">[ VERSION 1.1 // MULTI-NODE FALLBACK ]</p>
-        <div class="manifesto">"The oblong box in the corner of the room doesn't inform you; it programs you. An independent person is the only thing a system cannot own."</div>
-        <textarea id="input" placeholder="PASTE THE 'ARTICLE/INFO/STORY' HERE..."></textarea>
-        <button id="main-btn" onclick="startDecryption()">Extract Ground Truth</button>
-        <div id="results-area">
-            <div class="meter-container">
-                <span style="font-size: 1.1rem;">PERSUASION LEVEL: <span id="noise-percent" style="color:var(--accent)">0</span>%</span>
-                <div style="font-size:0.75rem;color:#666;margin-top:5px;">Higher scores indicate more emotional, persuasive, or narrative-driven language.</div>
-                <div id="noise-bar"><div id="noise-fill"></div></div>
-            </div>
-            <span class="output-label">Persuasion Techniques Detected:</span>
-            <div id="triggers-output" style="color: #fff; margin-bottom: 15px;"></div>
-            <span class="output-label">Analysis Summary:</span>
-            <div id="analysis-output"></div>
-            <p id="node-info" style="font-size:0.6rem; color:#333; margin-top:10px; text-align:right;"></p>
-        </div>
-        <footer>© 2026 GROUNDTRUTH SYSTEMS // NO DATA COLLECTED. NO PERMISSION ASKED.</footer>
+
+<h2>GT SYSTEMS</h2>
+
+<textarea id="input"></textarea>
+
+<button onclick="run()">ANALYZE</button>
+
+<div id="results">
+
+    <h3>PERSUASION SCORE: <span id="score">0</span></h3>
+
+    <div class="section">
+        <strong>Triggers</strong>
+        <div id="triggers"></div>
     </div>
 
-    <script>
-async function startDecryption() {
+    <div class="section">
+        <strong>Summary</strong>
+        <div id="summary"></div>
+    </div>
 
-    const textInput =
-        document.getElementById('input').value.trim();
+    <div class="section">
+        <strong>Key Observations</strong>
+        <pre id="observations"></pre>
+    </div>
 
-    if (!textInput) {
-        alert("System requires input.");
-        return;
-    }
+    <div class="section">
+        <strong>Framing Notes</strong>
+        <pre id="framing"></pre>
+    </div>
 
-    const overlay =
-        document.getElementById('overlay');
+</div>
 
-    const status =
-        document.getElementById('status');
+<script>
+async function run() {
 
-    const btn =
-        document.getElementById('main-btn');
+    const text =
+        document.getElementById("input").value.trim();
 
-    overlay.style.display = 'flex';
-    btn.disabled = true;
-    btn.innerText = 'ANALYZING...';
+    if (!text) return alert("No input");
 
-    status.innerText =
-        'CONNECTING TO GROUNDTRUTH NETWORK...';
+    const res =
+        await fetch("/api/analyze", {
+            method:"POST",
+            headers:{
+                "Content-Type":"application/json"
+            },
+            body:JSON.stringify({ text })
+        });
 
-    try {
+    const data =
+        await res.json();
 
-        const response =
-            await fetch('/api/analyze', {
-                method: 'POST',
-                headers: {
-                    'Content-Type':
-                        'application/json'
-                },
-                body: JSON.stringify({
-                    text: textInput
-                })
-            });
+    document.getElementById("results")
+        .style.display = "block";
 
-        const data =
-            await response.json();
+    document.getElementById("score")
+        .innerText = data.noise_score ?? 0;
 
-        if (!response.ok) {
-            throw new Error(
-                data.error || 'Analysis failed'
-            );
-        }
+    document.getElementById("triggers")
+        .innerText = (data.emotional_triggers || []).join(", ");
 
-        renderResults(
-            data,
-            data.node || 'UNKNOWN'
-        );
+    const lb = data.logic_breakdown || {};
 
-    } catch (err) {
+    document.getElementById("summary")
+        .innerText = lb.summary || "No summary";
 
-        alert(
-            'GroundTruth network unavailable.\n\n' +
-            err.message
-        );
+    document.getElementById("observations")
+        .innerText = (lb.key_observations || []).join("\n");
 
-    } finally {
-
-        overlay.style.display = 'none';
-
-        btn.disabled = false;
-
-        btn.innerText =
-            'Extract Ground Truth';
-    }
+    document.getElementById("framing")
+        .innerText = (lb.framing_notes || []).join("\n");
 }
+</script>
 
-function renderResults(data, nodeName) {
-
-    document.getElementById(
-        'results-area'
-    ).style.display = 'block';
-
-    document.getElementById(
-        'noise-percent'
-    ).innerText =
-        data.noise_score || 0;
-
-    document.getElementById(
-        'noise-fill'
-    ).style.width =
-        (data.noise_score || 0) + '%';
-
-    document.getElementById(
-        'triggers-output'
-    ).innerText =
-        Array.isArray(
-            data.emotional_triggers
-        )
-            ? data.emotional_triggers.join(', ')
-            : 'None detected';
-
-    const analysis = data.logic_breakdown;
-
-    document.getElementById('analysis-output').innerText =
-        typeof analysis === 'string'
-            ? analysis
-            : JSON.stringify(analysis, null, 2) || 'Analysis complete.';
-
-    document.getElementById(
-        'node-info'
-    ).innerText =
-        `DATA SOURCE: ${nodeName}`;
-
-    document.getElementById(
-        'results-area'
-    ).scrollIntoView({
-        behavior: 'smooth'
-    });
-}
-    </script>
 </body>
 </html>
