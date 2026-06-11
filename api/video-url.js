@@ -15,11 +15,11 @@ if (!url) {
 
 try {
 
-    // STEP 1: classify URL
+    // STEP 1: classify
     const meta = await extractFromUrl(url);
 
-    // STEP 2: generate transcript (stub for now)
-    const transcript = await transcribe(url, meta.type);
+    // STEP 2: real transcript (YouTube supported)
+    const text = await transcribe(url, meta.type);
 
     // STEP 3: send to analyzer
     const analysis = await fetch(
@@ -29,9 +29,7 @@ try {
             headers: {
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify({
-                text: transcript
-            })
+            body: JSON.stringify({ text })
         }
     );
 
@@ -43,9 +41,11 @@ try {
     });
 
 } catch (err) {
+
     console.error(err);
+
     return res.status(500).json({
-        error: "Video processing failed"
+        error: "Video ingestion failed"
     });
 }
 }
