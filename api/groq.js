@@ -9,6 +9,16 @@ export default async function handler(req, res) {
         "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
         "Content-Type": "application/json"
       },
+
+    const response = await fetch('...');
+if (!response.ok) {
+  console.error(`HTTP error! status: ${response.status}`);
+  const text = await response.text(); // Get the raw error message
+  console.error('Response body:', text);
+  return;
+}
+const data = await response.json();
+
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
         messages: [
