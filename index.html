@@ -55,6 +55,42 @@ h3 {
 
 <button onclick="run()">ANALYZE</button>
 
+<div id="results" style="display:none; margin-top:20px; text-align:left; background:#111; border:1px solid #333; padding:15px;">
+    <h3 style="color:#00ff41;">Analysis Results</h3>
+
+    <p>
+        <strong>Persuasion Score:</strong>
+        <span id="score"></span>%
+    </p>
+
+    <p>
+        <strong>Techniques Detected:</strong><br>
+        <span id="triggers"></span>
+    </p>
+
+    <p>
+        <strong>Summary:</strong><br>
+        <span id="summary"></span>
+    </p>
+
+    <p>
+        <strong>Key Observations:</strong>
+    </p>
+
+    <ul id="observations"></ul>
+
+    <p>
+        <strong>Framing Notes:</strong>
+    </p>
+
+    <ul id="framing"></ul>
+
+    <p style="color:#666;">
+        Source Node:
+        <span id="node"></span>
+    </p>
+</div>
+
 <div id="results">
 
     <h3>PERSUASION SCORE: <span id="score">0</span></h3>
