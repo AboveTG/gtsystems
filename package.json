@@ -1,5 +1,8 @@
 {
   "name": "gtsystems",
   "version": "1.0.0",
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "youtube-transcript": "^1.0.6"
+  }
 }
