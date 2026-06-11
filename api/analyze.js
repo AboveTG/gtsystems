@@ -1,35 +1,37 @@
 export default async function handler(req, res) {
 
     if (req.method !== "POST") {
-        return res.status(405).json({
-            error: "Method not allowed"
-        });
+        return res.status(405).json({ error: "Method not allowed" });
     }
 
     const { text } = req.body;
 
     if (!text || typeof text !== "string") {
-        return res.status(400).json({
-            error: "Invalid input"
-        });
+        return res.status(400).json({ error: "Invalid input" });
     }
 
     const SCHEMA = `
-Return ONLY valid JSON with EXACT keys:
+Return ONLY valid JSON.
+
+DO NOT include markdown.
+DO NOT include extra keys.
+
+Schema:
 
 {
-  "persuasion_level": number (0-100),
-  "emotional_triggers": array of strings,
-  "persuasion_techniques": array of strings,
-  "logic_breakdown": string
+  "noise_score": number (0-100),
+  "emotional_triggers": string[],
+  "logic_breakdown": {
+    "summary": string,
+    "key_observations": string[],
+    "framing_notes": string[]
+  }
 }
 
 Rules:
-- Do NOT add extra keys
-- Do NOT rename keys
-- Do NOT wrap in markdown
-- Do NOT include commentary
-- If unsure, return empty arrays and "No analysis available"
+- Focus on language framing, not truth judgment
+- Identify persuasion techniques in wording only
+- Keep observations grounded in the text
 `;
 
     const providers = [
@@ -57,50 +59,52 @@ Rules:
         }
     ];
 
+    function cleanJSON(content) {
+        return content
+            .replace(/```json/g, "")
+            .replace(/```/g, "")
+            .trim();
+    }
+
     function safeParse(content) {
         try {
-            const cleaned = content
-                .replace(/```json/g, "")
-                .replace(/```/g, "")
-                .trim();
-
-            return JSON.parse(cleaned);
-        } catch (e) {
+            return JSON.parse(cleanJSON(content));
+        } catch {
             return null;
         }
     }
 
     function normalize(data) {
         return {
-            persuasion_level:
-                Number(data?.persuasion_level ?? 0),
+            noise_score: Number(data?.noise_score ?? 0),
 
-            emotional_triggers:
-                Array.isArray(data?.emotional_triggers)
-                    ? data.emotional_triggers
+            emotional_triggers: Array.isArray(data?.emotional_triggers)
+                ? data.emotional_triggers
+                : [],
+
+            logic_breakdown: {
+                summary: data?.logic_breakdown?.summary || "No summary available",
+
+                key_observations: Array.isArray(data?.logic_breakdown?.key_observations)
+                    ? data.logic_breakdown.key_observations
                     : [],
 
-            persuasion_techniques:
-                Array.isArray(data?.persuasion_techniques)
-                    ? data.persuasion_techniques
-                    : [],
-
-            logic_breakdown:
-                typeof data?.logic_breakdown === "string"
-                    ? data.logic_breakdown
-                    : "No structured breakdown returned."
+                framing_notes: Array.isArray(data?.logic_breakdown?.framing_notes)
+                    ? data.logic_breakdown.framing_notes
+                    : []
+            }
         };
     }
 
-    for (const provider of providers) {
+    for (const p of providers) {
 
         try {
 
-            const response = await fetch(provider.url, {
+            const response = await fetch(p.url, {
                 method: "POST",
-                headers: provider.headers,
+                headers: p.headers,
                 body: JSON.stringify({
-                    ...provider.body,
+                    ...p.body,
                     messages: [
                         {
                             role: "system",
@@ -114,33 +118,27 @@ Rules:
                 })
             });
 
-            if (!response.ok) {
-                continue;
-            }
+            if (!response.ok) continue;
 
             const data = await response.json();
 
             const content =
                 data?.choices?.[0]?.message?.content;
 
-            if (!content) {
-                continue;
-            }
+            if (!content) continue;
 
             const parsed = safeParse(content);
 
-            if (!parsed) {
-                continue;
-            }
+            if (!parsed) continue;
 
             const result = normalize(parsed);
 
-            result.node = provider.name;
+            result.node = p.name;
 
             return res.status(200).json(result);
 
         } catch (err) {
-            console.error(provider.name, err);
+            console.error(p.name, err);
         }
     }
 
