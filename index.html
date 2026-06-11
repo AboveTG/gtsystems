@@ -150,11 +150,12 @@ function renderResults(data, nodeName) {
             ? data.emotional_triggers.join(', ')
             : 'None detected';
 
-    document.getElementById(
-        'analysis-output'
-    ).innerText =
-        data.logic_breakdown ||
-        'Analysis complete.';
+    const analysis = data.logic_breakdown;
+
+    document.getElementById('analysis-output').innerText =
+        typeof analysis === 'string'
+            ? analysis
+            : JSON.stringify(analysis, null, 2) || 'Analysis complete.';
 
     document.getElementById(
         'node-info'
