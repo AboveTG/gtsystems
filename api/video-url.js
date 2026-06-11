@@ -15,25 +15,30 @@ if (!url) {
 
 try {
 
-    // STEP 1: classify input
     const meta = await extractFromUrl(url);
-
-    // STEP 2: guaranteed text output
     const text = await transcribe(url, meta.type);
 
-    // STEP 3: analysis call (internal)
-    const base =
-        process.env.VERCEL_URL
-            ? `https://${process.env.VERCEL_URL}`
-            : "";
+    const base = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "";
 
-    const analysis = await fetch(`${base}/api/analyze`, {
+    const response = await fetch(`${base}/api/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text })
     });
 
-    const result = await analysis.json();
+    const raw = await response.text();
+
+    let result;
+
+    try {
+        result = JSON.parse(raw);
+    } catch {
+        return res.status(500).json({
+            error: "Analysis returned invalid JSON"
+        });
+    }
 
     return res.status(200).json({
         ...result,
@@ -45,7 +50,7 @@ try {
     console.error(err);
 
     return res.status(500).json({
-        error: "Ingestion pipeline failed"
+        error: "Video pipeline failed"
     });
 }
 }
