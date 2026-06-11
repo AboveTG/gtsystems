@@ -18,6 +18,7 @@ textarea {
     background:#000;
     color:#00ff41;
     border:1px solid #333;
+    padding:10px;
 }
 
 button {
@@ -31,9 +32,17 @@ button {
 
 #results {
     margin-top:20px;
-    display:none;
     border:1px solid #333;
     padding:15px;
+    display:none;
+}
+
+.section {
+    margin-top:10px;
+}
+
+h3 {
+    color:#00ff41;
 }
 </style>
 </head>
@@ -48,16 +57,26 @@ button {
 
 <div id="results">
 
-    <h3>Score: <span id="score">0</span></h3>
+    <h3>PERSUASION SCORE: <span id="score">0</span></h3>
 
-    <div>
+    <div class="section">
         <strong>Triggers</strong>
         <div id="triggers"></div>
     </div>
 
-    <div>
-        <strong>Analysis</strong>
-        <pre id="analysis"></pre>
+    <div class="section">
+        <strong>Summary</strong>
+        <div id="summary"></div>
+    </div>
+
+    <div class="section">
+        <strong>Key Observations</strong>
+        <pre id="observations"></pre>
+    </div>
+
+    <div class="section">
+        <strong>Framing Notes</strong>
+        <pre id="framing"></pre>
     </div>
 
 </div>
@@ -65,27 +84,42 @@ button {
 <script>
 async function run() {
 
-    const text = document.getElementById("input").value.trim();
-    if (!text) return alert("Input required");
+    const text =
+        document.getElementById("input").value.trim();
 
-    const res = await fetch("/api/groq", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text })
-    });
+    if (!text) return alert("No input");
 
-    const data = await res.json();
+    const res =
+        await fetch("/api/analyze", {
+            method:"POST",
+            headers:{
+                "Content-Type":"application/json"
+            },
+            body:JSON.stringify({ text })
+        });
 
-    document.getElementById("results").style.display = "block";
+    const data =
+        await res.json();
 
-    document.getElementById("score").innerText =
-        data.noise_score ?? 0;
+    document.getElementById("results")
+        .style.display = "block";
 
-    document.getElementById("triggers").innerText =
-        (data.emotional_triggers || []).join(", ");
+    document.getElementById("score")
+        .innerText = data.noise_score ?? 0;
 
-    document.getElementById("analysis").innerText =
-        data.logic_breakdown || "No analysis returned";
+    document.getElementById("triggers")
+        .innerText = (data.emotional_triggers || []).join(", ");
+
+    const lb = data.logic_breakdown || {};
+
+    document.getElementById("summary")
+        .innerText = lb.summary || "No summary";
+
+    document.getElementById("observations")
+        .innerText = (lb.key_observations || []).join("\n");
+
+    document.getElementById("framing")
+        .innerText = (lb.framing_notes || []).join("\n");
 }
 </script>
 
