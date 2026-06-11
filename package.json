@@ -1,8 +1,17 @@
 {
   "name": "gtsystems",
   "version": "1.0.0",
+  "description": "GroundTruth Systems - Text and Video Analysis Engine",
   "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "vercel dev"
+  },
   "dependencies": {
-    "youtube-transcript": "^1.0.6"
+    "youtube-transcript": "^1.2.1"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
