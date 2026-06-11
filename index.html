@@ -82,44 +82,115 @@ h3 {
 </div>
 
 <script>
-async function run() {
+async function startDecryption() {
 
-    const text =
-        document.getElementById("input").value.trim();
+    const textInput =
+        document.getElementById('input').value.trim();
 
-    if (!text) return alert("No input");
+    if (!textInput) {
+        alert("System requires input.");
+        return;
+    }
 
-    const res =
-        await fetch("/api/analyze", {
-            method:"POST",
-            headers:{
-                "Content-Type":"application/json"
+    const overlay =
+        document.getElementById('overlay');
+
+    const status =
+        document.getElementById('status');
+
+    const resultsArea =
+        document.getElementById('results-area');
+
+    const btn =
+        document.getElementById('main-btn');
+
+    // reset UI
+    resultsArea.style.display = 'none';
+    document.getElementById('noise-percent').innerText = "0";
+    document.getElementById('noise-fill').style.width = "0%";
+    document.getElementById('triggers-output').innerText = "";
+    document.getElementById('analysis-output').innerText = "";
+    document.getElementById('node-info').innerText = "";
+
+    overlay.style.display = 'flex';
+    btn.disabled = true;
+    btn.innerText = "ANALYZING...";
+
+    status.innerText = "CONNECTING TO GROUNDTRUTH NETWORK...";
+
+    try {
+
+        const response = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
             },
-            body:JSON.stringify({ text })
+            body: JSON.stringify({ text: textInput })
         });
 
-    const data =
-        await res.json();
+        const data = await response.json();
 
-    document.getElementById("results")
-        .style.display = "block";
+        if (!response.ok) {
+            throw new Error(data.error || "Analysis failed");
+        }
 
-    document.getElementById("score")
-        .innerText = data.noise_score ?? 0;
+        renderResults(data);
 
-    document.getElementById("triggers")
-        .innerText = (data.emotional_triggers || []).join(", ");
+    } catch (err) {
+
+        alert("SYSTEM ERROR:\n" + err.message);
+
+    } finally {
+
+        overlay.style.display = 'none';
+        btn.disabled = false;
+        btn.innerText = "Extract Ground Truth";
+    }
+}
+
+function renderResults(data) {
+
+    const score =
+        data.noise_score || 0;
+
+    document.getElementById('results-area')
+        .style.display = 'block';
+
+    document.getElementById('noise-percent')
+        .innerText = score;
+
+    document.getElementById('noise-fill')
+        .style.width = score + "%";
+
+    document.getElementById('triggers-output')
+        .innerText =
+            (data.emotional_triggers || []).join(", ");
 
     const lb = data.logic_breakdown || {};
 
-    document.getElementById("summary")
-        .innerText = lb.summary || "No summary";
+    // IMPORTANT: support structured + fallback
+    const summary =
+        lb.summary || "No summary available.";
 
-    document.getElementById("observations")
-        .innerText = (lb.key_observations || []).join("\n");
+    const observations =
+        (lb.key_observations || []).length
+            ? lb.key_observations.join("\n")
+            : "No key observations.";
 
-    document.getElementById("framing")
-        .innerText = (lb.framing_notes || []).join("\n");
+    const framing =
+        (lb.framing_notes || []).length
+            ? lb.framing_notes.join("\n")
+            : "No framing notes.";
+
+    document.getElementById('analysis-output').innerText =
+        `SUMMARY:\n${summary}\n\nKEY OBSERVATIONS:\n${observations}\n\nFRAMING NOTES:\n${framing}`;
+
+    document.getElementById('node-info')
+        .innerText =
+        `DATA SOURCE: ${data.node || "PRIMARY NODE"}`;
+
+    document.getElementById('results-area')
+        .scrollIntoView({ behavior: 'smooth' });
 }
 </script>
 
