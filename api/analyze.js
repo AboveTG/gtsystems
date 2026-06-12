@@ -1,63 +1,39 @@
 export default async function handler(req, res) {
 
-```
-if (req.method !== "POST") {
-    return res.status(405).json({
-        error: "Method not allowed"
-    });
-}
+    if (req.method !== "POST") {
+        return res.status(405).json({ error: "Method not allowed" });
+    }
 
-const { text } = req.body;
+    const { text } = req.body;
 
-if (!text || typeof text !== "string") {
-    return res.status(400).json({
-        error: "Invalid input"
-    });
-}
+    if (!text || typeof text !== "string") {
+        return res.status(400).json({ error: "Invalid input" });
+    }
 
-const SCHEMA = `
-```
-
-Analyze the text for:
-
-* Persuasive language
-* Emotional framing
-* Narrative shaping
-* Fear appeals
-* Authority appeals
-* Social pressure cues
-* Selective framing
-* Loaded language
+    const SCHEMA = `
+You are a language analysis engine.
 
 Return ONLY valid JSON.
 
+Required schema:
 {
-"noise_score": 0,
-"emotional_triggers": [
-"trigger"
-],
-"logic_breakdown": {
-"summary": "2-4 sentence analysis",
-"key_observations": [
-"observation 1",
-"observation 2",
-"observation 3"
-],
-"framing_notes": [
-"framing note 1",
-"framing note 2"
-]
-}
+  "noise_score": number,
+  "emotional_triggers": string[],
+  "logic_breakdown": {
+    "summary": string,
+    "key_observations": string[],
+    "framing_notes": string[]
+  }
 }
 
-All fields are required.
-Do not omit fields.
-Do not return null values.
+Rules:
+- Always include ALL fields
+- Never omit nested objects
+- Never return markdown
+- Output must be strict JSON only
 `;
 
-````
-const providers = [
-    {
+    const provider = {
         name: "GROQ",
         url: "https://api.groq.com/openai/v1/chat/completions",
         headers: {
@@ -65,180 +41,100 @@ const providers = [
             "Content-Type": "application/json"
         },
         model: "llama-3.3-70b-versatile"
-    }
-];
-
-function extractJSON(raw) {
-
-    if (!raw) return null;
-
-    let cleaned = raw
-        .replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
-
-    const first = cleaned.indexOf("{");
-    const last = cleaned.lastIndexOf("}");
-
-    if (first === -1 || last === -1) {
-        return null;
-    }
-
-    cleaned = cleaned.slice(first, last + 1);
-
-    try {
-        return JSON.parse(cleaned);
-    } catch {
-        return null;
-    }
-}
-
-function normalize(data) {
-
-    return {
-
-        noise_score:
-            Number(data?.noise_score ?? 0),
-
-        emotional_triggers:
-            Array.isArray(data?.emotional_triggers)
-                ? data.emotional_triggers
-                : [],
-
-        logic_breakdown: {
-
-            summary:
-                data?.logic_breakdown?.summary ||
-                "Analysis completed.",
-
-            key_observations:
-                Array.isArray(
-                    data?.logic_breakdown?.key_observations
-                )
-                    ? data.logic_breakdown.key_observations
-                    : [],
-
-            framing_notes:
-                Array.isArray(
-                    data?.logic_breakdown?.framing_notes
-                )
-                    ? data.logic_breakdown.framing_notes
-                    : []
-        }
     };
-}
 
-for (const p of providers) {
+    function extractJSON(raw) {
+        if (!raw) return null;
+
+        let cleaned = raw
+            .replace(/```json/g, "")
+            .replace(/```/g, "")
+            .trim();
+
+        const start = cleaned.indexOf("{");
+        const end = cleaned.lastIndexOf("}");
+
+        if (start === -1 || end === -1) return null;
+
+        try {
+            return JSON.parse(cleaned.slice(start, end + 1));
+        } catch {
+            return null;
+        }
+    }
+
+    function normalize(data) {
+
+        const safe = (d) => Array.isArray(d) ? d : [];
+
+        return {
+            noise_score: Number(data?.noise_score ?? 0),
+
+            emotional_triggers: safe(data?.emotional_triggers),
+
+            logic_breakdown: {
+                summary:
+                    data?.logic_breakdown?.summary ??
+                    "No summary generated.",
+
+                key_observations:
+                    safe(data?.logic_breakdown?.key_observations),
+
+                framing_notes:
+                    safe(data?.logic_breakdown?.framing_notes)
+            },
+
+            node: provider.name
+        };
+    }
+
+    function fallback(reason) {
+        return {
+            noise_score: 0,
+            emotional_triggers: [],
+            logic_breakdown: {
+                summary: `Analysis failed: ${reason}`,
+                key_observations: [],
+                framing_notes: []
+            },
+            node: provider.name
+        };
+    }
 
     try {
 
-        const response = await fetch(
-            p.url,
-            {
-                method: "POST",
-
-                headers: p.headers,
-
-                body: JSON.stringify({
-
-                    model: p.model,
-
-                    temperature: 0.2,
-
-                    response_format: {
-                        type: "json_object"
-                    },
-
-                    messages: [
-                        {
-                            role: "system",
-                            content: SCHEMA
-                        },
-                        {
-                            role: "user",
-                            content: text
-                        }
-                    ]
-                })
-            }
-        );
-
-        if (!response.ok) {
-
-            const err =
-                await response.text();
-
-            console.error(
-                `${p.name} HTTP ERROR`,
-                err
-            );
-
-            continue;
-        }
-
-        const apiResponse =
-            await response.json();
-
-        console.log(
-            "FULL API RESPONSE:",
-            JSON.stringify(apiResponse, null, 2)
-        );
-
-        const content =
-            apiResponse?.choices?.[0]
-                ?.message?.content;
-
-        console.log(
-            "MODEL CONTENT:",
-            content
-        );
-
-        if (!content) {
-
-            console.error(
-                `${p.name} returned no content`
-            );
-
-            continue;
-        }
-
-        const parsed =
-            extractJSON(content);
-
-        console.log(
-            "PARSED JSON:",
-            JSON.stringify(parsed, null, 2)
-        );
-
-        if (!parsed) {
-
-            console.error(
-                `${p.name} returned invalid JSON`
-            );
-
-            continue;
-        }
-
-        const result =
-            normalize(parsed);
-
-        return res.status(200).json({
-            ...result,
-            node: p.name
+        const response = await fetch(provider.url, {
+            method: "POST",
+            headers: provider.headers,
+            body: JSON.stringify({
+                model: provider.model,
+                temperature: 0.2,
+                response_format: { type: "json_object" },
+                messages: [
+                    { role: "system", content: SCHEMA },
+                    { role: "user", content: text }
+                ]
+            })
         });
 
+        const rawText = await response.text();
+
+        if (!response.ok) {
+            return res.status(500).json(fallback(rawText));
+        }
+
+        const apiResponse = JSON.parse(rawText);
+        const content = apiResponse?.choices?.[0]?.message?.content;
+
+        const parsed = extractJSON(content);
+
+        if (!parsed) {
+            return res.status(200).json(fallback("invalid JSON from model"));
+        }
+
+        return res.status(200).json(normalize(parsed));
+
     } catch (err) {
-
-        console.error(
-            `${p.name} exception`,
-            err
-        );
+        return res.status(500).json(fallback(err.message));
     }
-}
-
-return res.status(500).json({
-    error: "All analysis nodes failed"
-});
-````
-
 }
