@@ -29,14 +29,23 @@ body {
 
 h1 { color:var(--accent); text-align:center; }
 
-textarea {
+.manifesto {
+    background:var(--subtle);
+    padding:15px;
+    border-left:4px solid var(--accent);
+    margin:20px 0;
+}
+
+textarea, input {
     width:100%;
-    height:120px;
     background:#000;
     color:var(--accent);
     border:1px solid #333;
     padding:10px;
+    margin-bottom:10px;
 }
+
+textarea { height:120px; }
 
 button {
     width:100%;
@@ -64,6 +73,11 @@ button {
     border:1px solid #333;
     padding:15px;
 }
+
+.error {
+    color:#ff3e3e;
+    margin-bottom:10px;
+}
 </style>
 </head>
 
@@ -77,13 +91,21 @@ button {
 
 <h1>GT SYSTEMS</h1>
 
-<textarea id="input"></textarea>
+<div class="manifesto">
+    Independent signal extraction system
+</div>
+
+<input id="inputUrl" placeholder="YouTube URL (optional)" />
+
+<textarea id="inputText" placeholder="Paste text (optional)"></textarea>
 
 <button onclick="run()">ANALYZE</button>
 
 <div id="results">
 
-    <p>Score: <span id="score">0</span></p>
+    <div class="error" id="error"></div>
+
+    <p>Score: <span id="score">-</span></p>
 
     <p>Triggers: <span id="triggers"></span></p>
 
@@ -95,7 +117,7 @@ button {
     <p>Framing:</p>
     <ul id="framing"></ul>
 
-    <p style="color:#666;">Node: <span id="node"></span></p>
+    <p>Node: <span id="node"></span></p>
 
 </div>
 
@@ -105,51 +127,61 @@ button {
 
 async function run() {
 
-const text = document.getElementById("input").value.trim();
-if (!text) return alert("Input required");
+    const url = document.getElementById("inputUrl").value.trim();
+    const text = document.getElementById("inputText").value.trim();
 
-document.getElementById("overlay").style.display = "flex";
+    if (!url && !text) {
+        alert("Input required");
+        return;
+    }
 
-const status = document.getElementById("status");
+    document.getElementById("overlay").style.display = "flex";
 
-const msgs = [
-    "ANALYZING...",
-    "EXTRACTING SIGNAL...",
-    "SCORING LANGUAGE...",
-    "FINALIZING..."
-];
+    const status = document.getElementById("status");
 
-let i = 0;
-const anim = setInterval(() => {
-    status.innerText = msgs[i % msgs.length];
-    i++;
-}, 1000);
+    const msgs = [
+        "ANALYZING...",
+        "DETECTING INPUT TYPE...",
+        "CHUNKING SIGNAL...",
+        "RUNNING MULTI-PASS ANALYSIS...",
+        "AGGREGATING RESULTS..."
+    ];
 
-try {
+    let i = 0;
+    const anim = setInterval(() => {
+        status.innerText = msgs[i % msgs.length];
+        i++;
+    }, 1000);
 
-    const res = await fetch("/api/analyze", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ text })
-    });
+    try {
 
-    const data = await res.json();
+        const payload = url ? { url } : { text };
 
-    clearInterval(anim);
-    document.getElementById("overlay").style.display = "none";
+        const res = await fetch("/api/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
 
-    if (!res.ok) throw new Error(data.error || "Analysis failed");
+        const data = await res.json();
 
-    render(data);
+        clearInterval(anim);
+        document.getElementById("overlay").style.display = "none";
 
-} catch (e) {
+        if (!res.ok) {
+            throw new Error(data.error || "Analysis failed");
+        }
 
-    clearInterval(anim);
-    document.getElementById("overlay").style.display = "none";
+        render(data);
 
-    alert(e.message);
-}
+    } catch (e) {
 
+        clearInterval(anim);
+        document.getElementById("overlay").style.display = "none";
+
+        document.getElementById("results").style.display = "block";
+        document.getElementById("error").innerText = e.message;
+    }
 }
 
 function safe(v) {
@@ -158,37 +190,37 @@ function safe(v) {
 
 function render(data) {
 
-document.getElementById("results").style.display = "block";
+    document.getElementById("results").style.display = "block";
 
-document.getElementById("score").innerText =
-    data.noise_score ?? 0;
+    document.getElementById("error").innerText = "";
 
-document.getElementById("triggers").innerText =
-    safe(data.emotional_triggers).join(", ");
+    document.getElementById("score").innerText =
+        data.noise_score ?? 0;
 
-document.getElementById("summary").innerText =
-    data?.logic_breakdown?.summary ?? "No summary";
+    document.getElementById("triggers").innerText =
+        safe(data.emotional_triggers).join(", ");
 
-const obs = document.getElementById("observations");
-obs.innerHTML = "";
-safe(data?.logic_breakdown?.key_observations)
-    .forEach(x => {
+    document.getElementById("summary").innerText =
+        data?.logic_breakdown?.summary || "No summary";
+
+    const obs = document.getElementById("observations");
+    obs.innerHTML = "";
+    safe(data?.logic_breakdown?.key_observations).forEach(x => {
         const li = document.createElement("li");
         li.textContent = x;
         obs.appendChild(li);
     });
 
-const fr = document.getElementById("framing");
-fr.innerHTML = "";
-safe(data?.logic_breakdown?.framing_notes)
-    .forEach(x => {
+    const fr = document.getElementById("framing");
+    fr.innerHTML = "";
+    safe(data?.logic_breakdown?.framing_notes).forEach(x => {
         const li = document.createElement("li");
         li.textContent = x;
         fr.appendChild(li);
     });
 
-document.getElementById("node").innerText =
-    data.node ?? "unknown";
+    document.getElementById("node").innerText =
+        data.node || "unknown";
 }
 
 </script>
