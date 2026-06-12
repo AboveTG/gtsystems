@@ -1,45 +1,76 @@
+import { YoutubeTranscript } from "youtube-transcript";
+
 export default async function handler(req, res) {
 
     if (req.method !== "POST") {
         return res.status(405).json({ error: "Method not allowed" });
     }
 
-    const { text } = req.body;
+    let { text, url } = req.body;
 
-    if (!text || typeof text !== "string") {
-        return res.status(400).json({ error: "Invalid input" });
+    if (!text && !url) {
+        return res.status(400).json({ error: "No input provided" });
     }
 
-    const SCHEMA = `
-You are a linguistic pattern analysis engine.
+    // -----------------------------
+    // TRANSCRIPT EXTRACTION
+    // -----------------------------
 
-CRITICAL RULES:
-- Do NOT interpret subject matter
-- Do NOT infer real-world events
-- Do NOT summarize news meaning
-- ONLY analyze language mechanics
+    function chunkText(text, size = 1200) {
+        const chunks = [];
+        for (let i = 0; i < text.length; i += size) {
+            chunks.push(text.slice(i, i + size));
+        }
+        return chunks;
+    }
 
-Focus ONLY on:
-- emotional framing words
-- authority signaling language
-- certainty vs ambiguity
-- fear/urgency construction
-- passive voice usage
-- moral framing
-- attribution patterns
+    async function extractVideoId(inputUrl) {
+        try {
+            const u = new URL(inputUrl);
 
-Return ONLY valid JSON:
+            if (u.hostname.includes("youtu.be")) {
+                return u.pathname.slice(1);
+            }
 
-{
-  "noise_score": number,
-  "emotional_triggers": string[],
-  "logic_breakdown": {
-    "summary": string,
-    "key_observations": string[],
-    "framing_notes": string[]
-  }
-}
-`;
+            return u.searchParams.get("v");
+        } catch {
+            return null;
+        }
+    }
+
+    async function fetchTranscript(videoUrl) {
+
+        const videoId = await extractVideoId(videoUrl);
+
+        if (!videoId) {
+            throw new Error("Invalid YouTube URL");
+        }
+
+        const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+
+        return transcript
+            .map(x => x.text)
+            .join(" ")
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    if (url) {
+        try {
+            text = await fetchTranscript(url);
+        } catch (err) {
+            return res.status(500).json({
+                error: "Transcript extraction failed",
+                details: err.message
+            });
+        }
+    }
+
+    const chunks = chunkText(text, 1200);
+
+    // -----------------------------
+    // MODEL CONFIG
+    // -----------------------------
 
     const provider = {
         name: "GROQ",
@@ -51,7 +82,25 @@ Return ONLY valid JSON:
         model: "llama-3.3-70b-versatile"
     };
 
-    function extractJSON(raw) {
+    const SYSTEM_PROMPT = `
+Return ONLY JSON.
+
+Analyze ONLY language structure.
+
+Do NOT interpret meaning or events.
+
+{
+  "noise_score": number,
+  "triggers": string[],
+  "observations": string[]
+}
+`;
+
+    // -----------------------------
+    // SAFE PARSER
+    // -----------------------------
+
+    function safeParse(raw) {
         if (!raw) return null;
 
         const cleaned = raw
@@ -71,42 +120,11 @@ Return ONLY valid JSON:
         }
     }
 
-    function safeArray(v) {
-        return Array.isArray(v) ? v : [];
-    }
+    // -----------------------------
+    // CHUNK ANALYSIS
+    // -----------------------------
 
-    function normalize(data) {
-        return {
-            noise_score: Number(data?.noise_score ?? 0),
-
-            emotional_triggers: safeArray(data?.emotional_triggers),
-
-            logic_breakdown: {
-                summary: data?.logic_breakdown?.summary ?? "No summary available.",
-
-                key_observations: safeArray(data?.logic_breakdown?.key_observations),
-
-                framing_notes: safeArray(data?.logic_breakdown?.framing_notes)
-            },
-
-            node: provider.name
-        };
-    }
-
-    function fallback(reason) {
-        return {
-            noise_score: 0,
-            emotional_triggers: [],
-            logic_breakdown: {
-                summary: `Analysis failed: ${reason}`,
-                key_observations: [],
-                framing_notes: []
-            },
-            node: provider.name
-        };
-    }
-
-    try {
+    async function analyzeChunk(chunk) {
 
         const response = await fetch(provider.url, {
             method: "POST",
@@ -116,30 +134,85 @@ Return ONLY valid JSON:
                 temperature: 0.2,
                 response_format: { type: "json_object" },
                 messages: [
-                    { role: "system", content: SCHEMA },
-                    { role: "user", content: text }
+                    { role: "system", content: SYSTEM_PROMPT },
+                    { role: "user", content: chunk }
                 ]
             })
         });
 
         const raw = await response.text();
 
-        if (!response.ok) {
-            return res.status(500).json(fallback(raw));
-        }
+        if (!response.ok) return null;
 
         const api = JSON.parse(raw);
         const content = api?.choices?.[0]?.message?.content;
 
-        const parsed = extractJSON(content);
+        return safeParse(content);
+    }
 
-        if (!parsed) {
-            return res.status(200).json(fallback("invalid model output"));
+    // -----------------------------
+    // AGGREGATION ENGINE
+    // -----------------------------
+
+    function aggregate(results) {
+
+        const triggers = [];
+        const observations = [];
+        let scoreSum = 0;
+        let count = 0;
+
+        for (const r of results) {
+
+            if (!r) continue;
+
+            scoreSum += Number(r.noise_score || 0);
+            count++;
+
+            triggers.push(...(r.triggers || []));
+            observations.push(...(r.observations || []));
         }
 
-        return res.status(200).json(normalize(parsed));
+        return {
+            noise_score: Math.round(scoreSum / Math.max(count, 1)),
+
+            emotional_triggers: [...new Set(triggers)],
+
+            logic_breakdown: {
+                summary: "Multi-pass chunked linguistic analysis.",
+                key_observations: [...new Set(observations)],
+                framing_notes: [
+                    "Derived from distributed chunk analysis",
+                    "No single-pass inference used"
+                ]
+            }
+        };
+    }
+
+    // -----------------------------
+    // EXECUTION
+    // -----------------------------
+
+    try {
+
+        const results = [];
+
+        for (const chunk of chunks) {
+            const r = await analyzeChunk(chunk);
+            results.push(r);
+        }
+
+        const final = aggregate(results);
+
+        return res.status(200).json({
+            ...final,
+            node: provider.name
+        });
 
     } catch (err) {
-        return res.status(500).json(fallback(err.message));
+
+        return res.status(500).json({
+            error: "Processing failure",
+            details: err.message
+        });
     }
 }
