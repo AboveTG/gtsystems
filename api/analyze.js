@@ -1,31 +1,27 @@
-import { YoutubeTranscript } from "youtube-transcript";
-
 export default async function handler(req, res) {
 
     if (req.method !== "POST") {
-        return res.status(405).json({ error: "Method not allowed" });
+        return res.status(405).json({
+            error: "Method not allowed"
+        });
     }
 
-    let { text, url } = req.body;
+    let { text, url } = req.body || {};
 
     if (!text && !url) {
-        return res.status(400).json({ error: "No input provided" });
+        return res.status(400).json({
+            error: "No input provided"
+        });
     }
 
-    // -----------------------------
-    // TRANSCRIPT EXTRACTION
-    // -----------------------------
+    // -------------------------
+    // YOUTUBE SUPPORT
+    // -------------------------
 
-    function chunkText(text, size = 1200) {
-        const chunks = [];
-        for (let i = 0; i < text.length; i += size) {
-            chunks.push(text.slice(i, i + size));
-        }
-        return chunks;
-    }
+    function extractVideoId(inputUrl) {
 
-    async function extractVideoId(inputUrl) {
         try {
+
             const u = new URL(inputUrl);
 
             if (u.hostname.includes("youtu.be")) {
@@ -33,20 +29,27 @@ export default async function handler(req, res) {
             }
 
             return u.searchParams.get("v");
+
         } catch {
+
             return null;
         }
     }
 
     async function fetchTranscript(videoUrl) {
 
-        const videoId = await extractVideoId(videoUrl);
+        const { YoutubeTranscript } =
+            await import("youtube-transcript");
+
+        const videoId =
+            extractVideoId(videoUrl);
 
         if (!videoId) {
             throw new Error("Invalid YouTube URL");
         }
 
-        const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+        const transcript =
+            await YoutubeTranscript.fetchTranscript(videoId);
 
         return transcript
             .map(x => x.text)
@@ -56,9 +59,13 @@ export default async function handler(req, res) {
     }
 
     if (url) {
+
         try {
+
             text = await fetchTranscript(url);
+
         } catch (err) {
+
             return res.status(500).json({
                 error: "Transcript extraction failed",
                 details: err.message
@@ -66,11 +73,26 @@ export default async function handler(req, res) {
         }
     }
 
-    const chunks = chunkText(text, 1200);
+    // -------------------------
+    // CHUNKING
+    // -------------------------
 
-    // -----------------------------
-    // MODEL CONFIG
-    // -----------------------------
+    function chunkText(str, size = 2500) {
+
+        const chunks = [];
+
+        for (let i = 0; i < str.length; i += size) {
+            chunks.push(str.slice(i, i + size));
+        }
+
+        return chunks;
+    }
+
+    const chunks = chunkText(text);
+
+    // -------------------------
+    // MODEL
+    // -------------------------
 
     const provider = {
         name: "GROQ",
@@ -83,27 +105,37 @@ export default async function handler(req, res) {
     };
 
     const SYSTEM_PROMPT = `
+You are a language framing analysis engine.
+
+Analyze:
+
+- persuasion tactics
+- emotional language
+- authority appeals
+- fear appeals
+- urgency construction
+- loaded language
+- attribution patterns
+- narrative shaping
+
 Return ONLY JSON.
-
-Analyze ONLY language structure.
-
-Do NOT interpret meaning or events.
 
 {
   "noise_score": number,
-  "triggers": string[],
-  "observations": string[]
+  "emotional_triggers": string[],
+  "logic_breakdown": {
+    "summary": string,
+    "key_observations": string[],
+    "framing_notes": string[]
+  }
 }
 `;
 
-    // -----------------------------
-    // SAFE PARSER
-    // -----------------------------
+    function safeParse(content) {
 
-    function safeParse(raw) {
-        if (!raw) return null;
+        if (!content) return null;
 
-        const cleaned = raw
+        const cleaned = content
             .replace(/```json/g, "")
             .replace(/```/g, "")
             .trim();
@@ -111,108 +143,137 @@ Do NOT interpret meaning or events.
         const start = cleaned.indexOf("{");
         const end = cleaned.lastIndexOf("}");
 
-        if (start === -1 || end === -1) return null;
+        if (start === -1 || end === -1) {
+            return null;
+        }
 
         try {
-            return JSON.parse(cleaned.slice(start, end + 1));
+
+            return JSON.parse(
+                cleaned.slice(start, end + 1)
+            );
+
         } catch {
+
             return null;
         }
     }
 
-    // -----------------------------
-    // CHUNK ANALYSIS
-    // -----------------------------
-
     async function analyzeChunk(chunk) {
 
-        const response = await fetch(provider.url, {
-            method: "POST",
-            headers: provider.headers,
-            body: JSON.stringify({
-                model: provider.model,
-                temperature: 0.2,
-                response_format: { type: "json_object" },
-                messages: [
-                    { role: "system", content: SYSTEM_PROMPT },
-                    { role: "user", content: chunk }
-                ]
-            })
-        });
+        const response = await fetch(
+            provider.url,
+            {
+                method: "POST",
 
-        const raw = await response.text();
+                headers: provider.headers,
 
-        if (!response.ok) return null;
+                body: JSON.stringify({
+                    model: provider.model,
+                    temperature: 0.2,
 
-        const api = JSON.parse(raw);
-        const content = api?.choices?.[0]?.message?.content;
+                    response_format: {
+                        type: "json_object"
+                    },
+
+                    messages: [
+                        {
+                            role: "system",
+                            content: SYSTEM_PROMPT
+                        },
+                        {
+                            role: "user",
+                            content: chunk
+                        }
+                    ]
+                })
+            }
+        );
+
+        if (!response.ok) {
+
+            const err =
+                await response.text();
+
+            console.error(err);
+
+            return null;
+        }
+
+        const data =
+            await response.json();
+
+        const content =
+            data?.choices?.[0]?.message?.content;
 
         return safeParse(content);
     }
 
-    // -----------------------------
-    // AGGREGATION ENGINE
-    // -----------------------------
+    const results = [];
 
-    function aggregate(results) {
+    for (const chunk of chunks) {
 
-        const triggers = [];
-        const observations = [];
-        let scoreSum = 0;
-        let count = 0;
+        const result =
+            await analyzeChunk(chunk);
 
-        for (const r of results) {
-
-            if (!r) continue;
-
-            scoreSum += Number(r.noise_score || 0);
-            count++;
-
-            triggers.push(...(r.triggers || []));
-            observations.push(...(r.observations || []));
+        if (result) {
+            results.push(result);
         }
-
-        return {
-            noise_score: Math.round(scoreSum / Math.max(count, 1)),
-
-            emotional_triggers: [...new Set(triggers)],
-
-            logic_breakdown: {
-                summary: "Multi-pass chunked linguistic analysis.",
-                key_observations: [...new Set(observations)],
-                framing_notes: [
-                    "Derived from distributed chunk analysis",
-                    "No single-pass inference used"
-                ]
-            }
-        };
     }
 
-    // -----------------------------
-    // EXECUTION
-    // -----------------------------
-
-    try {
-
-        const results = [];
-
-        for (const chunk of chunks) {
-            const r = await analyzeChunk(chunk);
-            results.push(r);
-        }
-
-        const final = aggregate(results);
-
-        return res.status(200).json({
-            ...final,
-            node: provider.name
-        });
-
-    } catch (err) {
+    if (!results.length) {
 
         return res.status(500).json({
-            error: "Processing failure",
-            details: err.message
+            error: "No valid analysis returned"
         });
     }
+
+    const scores =
+        results.map(r => Number(r.noise_score || 0));
+
+    const triggers =
+        results.flatMap(
+            r => r.emotional_triggers || []
+        );
+
+    const observations =
+        results.flatMap(
+            r => r.logic_breakdown?.key_observations || []
+        );
+
+    const framing =
+        results.flatMap(
+            r => r.logic_breakdown?.framing_notes || []
+        );
+
+    const summary =
+        results[0]?.logic_breakdown?.summary ||
+        "Analysis complete.";
+
+    return res.status(200).json({
+
+        noise_score:
+            Number(
+                (
+                    scores.reduce((a,b)=>a+b,0) /
+                    scores.length
+                ).toFixed(2)
+            ),
+
+        emotional_triggers:
+            [...new Set(triggers)],
+
+        logic_breakdown: {
+
+            summary,
+
+            key_observations:
+                [...new Set(observations)],
+
+            framing_notes:
+                [...new Set(framing)]
+        },
+
+        node: provider.name
+    });
 }
