@@ -2,16 +2,13 @@
   "name": "gtsystems",
   "version": "1.0.0",
   "type": "module",
-
   "scripts": {
     "dev": "vercel dev",
     "start": "vercel dev"
   },
-
   "dependencies": {
     "youtube-transcript": "^1.2.1"
   },
-
   "engines": {
     "node": "20.x"
   }
