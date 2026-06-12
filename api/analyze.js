@@ -11,11 +11,25 @@ export default async function handler(req, res) {
     }
 
     const SCHEMA = `
-You are a language analysis engine.
+You are a linguistic pattern analysis engine.
 
-Return ONLY valid JSON.
+CRITICAL RULES:
+- Do NOT interpret subject matter
+- Do NOT infer real-world events
+- Do NOT summarize news meaning
+- ONLY analyze language mechanics
 
-Required schema:
+Focus ONLY on:
+- emotional framing words
+- authority signaling language
+- certainty vs ambiguity
+- fear/urgency construction
+- passive voice usage
+- moral framing
+- attribution patterns
+
+Return ONLY valid JSON:
+
 {
   "noise_score": number,
   "emotional_triggers": string[],
@@ -25,12 +39,6 @@ Required schema:
     "framing_notes": string[]
   }
 }
-
-Rules:
-- Always include ALL fields
-- Never omit nested objects
-- Never return markdown
-- Output must be strict JSON only
 `;
 
     const provider = {
@@ -46,7 +54,7 @@ Rules:
     function extractJSON(raw) {
         if (!raw) return null;
 
-        let cleaned = raw
+        const cleaned = raw
             .replace(/```json/g, "")
             .replace(/```/g, "")
             .trim();
@@ -63,25 +71,22 @@ Rules:
         }
     }
 
+    function safeArray(v) {
+        return Array.isArray(v) ? v : [];
+    }
+
     function normalize(data) {
-
-        const safe = (d) => Array.isArray(d) ? d : [];
-
         return {
             noise_score: Number(data?.noise_score ?? 0),
 
-            emotional_triggers: safe(data?.emotional_triggers),
+            emotional_triggers: safeArray(data?.emotional_triggers),
 
             logic_breakdown: {
-                summary:
-                    data?.logic_breakdown?.summary ??
-                    "No summary generated.",
+                summary: data?.logic_breakdown?.summary ?? "No summary available.",
 
-                key_observations:
-                    safe(data?.logic_breakdown?.key_observations),
+                key_observations: safeArray(data?.logic_breakdown?.key_observations),
 
-                framing_notes:
-                    safe(data?.logic_breakdown?.framing_notes)
+                framing_notes: safeArray(data?.logic_breakdown?.framing_notes)
             },
 
             node: provider.name
@@ -117,19 +122,19 @@ Rules:
             })
         });
 
-        const rawText = await response.text();
+        const raw = await response.text();
 
         if (!response.ok) {
-            return res.status(500).json(fallback(rawText));
+            return res.status(500).json(fallback(raw));
         }
 
-        const apiResponse = JSON.parse(rawText);
-        const content = apiResponse?.choices?.[0]?.message?.content;
+        const api = JSON.parse(raw);
+        const content = api?.choices?.[0]?.message?.content;
 
         const parsed = extractJSON(content);
 
         if (!parsed) {
-            return res.status(200).json(fallback("invalid JSON from model"));
+            return res.status(200).json(fallback("invalid model output"));
         }
 
         return res.status(200).json(normalize(parsed));
