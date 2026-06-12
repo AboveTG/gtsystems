@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -6,17 +7,18 @@
 <title>GT Systems | Ground Truth</title>
 
 <style>
-:root {
+
+:root{
     --bg:#0a0a0a;
     --text:#e0e0e0;
     --accent:#00ff41;
     --subtle:#1a1a1a;
 }
 
-body {
+body{
     background:var(--bg);
     color:var(--text);
-    font-family:monospace;
+    font-family:'Courier New', monospace;
     display:flex;
     justify-content:center;
     align-items:center;
@@ -25,48 +27,87 @@ body {
     padding:20px;
 }
 
-.container { width:100%; max-width:720px; }
+.container{
+    width:100%;
+    max-width:800px;
+}
 
-h1 { color:var(--accent); text-align:center; }
+h1{
+    color:var(--accent);
+    text-align:center;
+    text-shadow:0 0 10px rgba(0,255,65,.4);
+}
 
-.manifesto {
+.manifesto{
     background:var(--subtle);
-    padding:15px;
     border-left:4px solid var(--accent);
+    padding:15px;
     margin:20px 0;
 }
 
-textarea, input {
+input,
+textarea{
     width:100%;
+    box-sizing:border-box;
     background:#000;
     color:var(--accent);
     border:1px solid #333;
-    padding:10px;
+    padding:12px;
     margin-bottom:10px;
+    font-family:inherit;
 }
 
-textarea { height:120px; }
+textarea{
+    height:180px;
+    resize:vertical;
+}
 
-button {
+button{
     width:100%;
     padding:15px;
-    background:var(--accent);
     border:none;
+    background:var(--accent);
+    color:#000;
     font-weight:bold;
     cursor:pointer;
+    letter-spacing:1px;
 }
 
-#overlay {
+button:hover{
+    opacity:.9;
+}
+
+#overlay{
     position:fixed;
     inset:0;
-    background:rgba(0,0,0,0.9);
+    background:rgba(0,0,0,.95);
     display:none;
     justify-content:center;
     align-items:center;
     flex-direction:column;
+    z-index:999;
 }
 
-#results {
+.scanline{
+    position:absolute;
+    width:100%;
+    height:2px;
+    background:var(--accent);
+    opacity:.3;
+    animation:scan 2s linear infinite;
+}
+
+@keyframes scan{
+    from{ top:0; }
+    to{ top:100%; }
+}
+
+#status{
+    color:var(--accent);
+    font-size:1.2rem;
+}
+
+#results{
     display:none;
     margin-top:20px;
     background:#111;
@@ -74,52 +115,101 @@ button {
     padding:15px;
 }
 
-.error {
-    color:#ff3e3e;
+.error{
+    color:#ff5555;
     margin-bottom:10px;
 }
+
+ul{
+    padding-left:20px;
+}
+
+.small{
+    color:#777;
+    font-size:.9rem;
+}
+
 </style>
+
 </head>
 
 <body>
 
 <div id="overlay">
-    <div id="status" style="color:#00ff41;">ANALYZING...</div>
+    <div class="scanline"></div>
+    <div id="status">ANALYZING...</div>
 </div>
 
 <div class="container">
 
+```
 <h1>GT SYSTEMS</h1>
 
 <div class="manifesto">
-    Independent signal extraction system
+    <strong>[ INDEPENDENT SENSOR NODE ]</strong>
+    <br><br>
+    "The oblong box in the corner of the room doesn't inform you; it programs you.
+    An independent person is the only thing a system cannot own."
 </div>
 
-<input id="inputUrl" placeholder="YouTube URL (optional)" />
+<div class="manifesto">
+    <strong>HOW TO USE</strong>
+    <ol>
+        <li>Paste a YouTube URL OR article text.</li>
+        <li>Leave one field blank if using the other.</li>
+        <li>Click ANALYZE.</li>
+        <li>Review persuasion signals, framing patterns and narrative structure.</li>
+    </ol>
+</div>
 
-<textarea id="inputText" placeholder="Paste text (optional)"></textarea>
+<input
+    id="inputUrl"
+    placeholder="YouTube URL (optional)"
+>
 
-<button onclick="run()">ANALYZE</button>
+<textarea
+    id="inputText"
+    placeholder="Paste article, transcript, social media post, or other text..."
+></textarea>
+
+<button onclick="run()">
+    ANALYZE GROUND TRUTH
+</button>
 
 <div id="results">
 
-    <div class="error" id="error"></div>
+    <div id="error" class="error"></div>
 
-    <p>Score: <span id="score">-</span></p>
+    <p>
+        <strong>Persuasion Score:</strong>
+        <span id="score">-</span>
+    </p>
 
-    <p>Triggers: <span id="triggers"></span></p>
+    <p>
+        <strong>Techniques Detected:</strong><br>
+        <span id="triggers"></span>
+    </p>
 
-    <p>Summary: <span id="summary"></span></p>
+    <p>
+        <strong>Summary:</strong><br>
+        <span id="summary"></span>
+    </p>
 
-    <p>Observations:</p>
+    <p><strong>Key Observations:</strong></p>
+
     <ul id="observations"></ul>
 
-    <p>Framing:</p>
+    <p><strong>Framing Notes:</strong></p>
+
     <ul id="framing"></ul>
 
-    <p>Node: <span id="node"></span></p>
+    <p class="small">
+        Source Node:
+        <span id="node"></span>
+    </p>
 
 </div>
+```
 
 </div>
 
@@ -127,100 +217,189 @@ button {
 
 async function run() {
 
-    const url = document.getElementById("inputUrl").value.trim();
-    const text = document.getElementById("inputText").value.trim();
+    const url =
+        document.getElementById("inputUrl")
+        .value
+        .trim();
+
+    const text =
+        document.getElementById("inputText")
+        .value
+        .trim();
 
     if (!url && !text) {
-        alert("Input required");
+
+        alert(
+            "Paste article text or a YouTube URL."
+        );
+
         return;
     }
 
-    document.getElementById("overlay").style.display = "flex";
+    const overlay =
+        document.getElementById("overlay");
 
-    const status = document.getElementById("status");
+    overlay.style.display = "flex";
 
-    const msgs = [
-        "ANALYZING...",
+    const status =
+        document.getElementById("status");
+
+    const messages = [
         "DETECTING INPUT TYPE...",
-        "CHUNKING SIGNAL...",
-        "RUNNING MULTI-PASS ANALYSIS...",
+        "EXTRACTING SIGNAL...",
+        "SCANNING LANGUAGE...",
+        "IDENTIFYING FRAMING...",
         "AGGREGATING RESULTS..."
     ];
 
-    let i = 0;
-    const anim = setInterval(() => {
-        status.innerText = msgs[i % msgs.length];
-        i++;
-    }, 1000);
+    let index = 0;
+
+    const animation =
+        setInterval(() => {
+
+            status.innerText =
+                messages[index % messages.length];
+
+            index++;
+
+        }, 1200);
 
     try {
 
-        const payload = url ? { url } : { text };
+        const payload =
+            url ? { url } : { text };
 
-        const res = await fetch("/api/analyze", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
+        const response =
+            await fetch(
+                "/api/analyze",
+                {
+                    method:"POST",
 
-        const data = await res.json();
+                    headers:{
+                        "Content-Type":"application/json"
+                    },
 
-        clearInterval(anim);
-        document.getElementById("overlay").style.display = "none";
+                    body:JSON.stringify(payload)
+                }
+            );
 
-        if (!res.ok) {
-            throw new Error(data.error || "Analysis failed");
+        const raw =
+            await response.text();
+
+        let data;
+
+        try {
+
+            data = JSON.parse(raw);
+
+        } catch {
+
+            throw new Error(
+                raw.substring(0,300)
+            );
+        }
+
+        clearInterval(animation);
+
+        overlay.style.display = "none";
+
+        if (!response.ok || data.error) {
+
+            throw new Error(
+                data.error ||
+                "Analysis failed"
+            );
         }
 
         render(data);
 
-    } catch (e) {
+    } catch(err) {
 
-        clearInterval(anim);
-        document.getElementById("overlay").style.display = "none";
+        clearInterval(animation);
 
-        document.getElementById("results").style.display = "block";
-        document.getElementById("error").innerText = e.message;
+        overlay.style.display = "none";
+
+        document.getElementById("results")
+            .style.display = "block";
+
+        document.getElementById("error")
+            .innerText = err.message;
     }
 }
 
-function safe(v) {
-    return Array.isArray(v) ? v : [];
+function safeArray(value){
+
+    return Array.isArray(value)
+        ? value
+        : [];
 }
 
-function render(data) {
+function render(data){
 
-    document.getElementById("results").style.display = "block";
+    document.getElementById("results")
+        .style.display = "block";
 
-    document.getElementById("error").innerText = "";
+    document.getElementById("error")
+        .innerText = "";
 
-    document.getElementById("score").innerText =
+    document.getElementById("score")
+        .innerText =
         data.noise_score ?? 0;
 
-    document.getElementById("triggers").innerText =
-        safe(data.emotional_triggers).join(", ");
+    document.getElementById("triggers")
+        .innerText =
+        safeArray(
+            data.emotional_triggers
+        ).join(", ");
 
-    document.getElementById("summary").innerText =
-        data?.logic_breakdown?.summary || "No summary";
+    document.getElementById("summary")
+        .innerText =
+        data?.logic_breakdown?.summary ||
+        "No summary available";
 
-    const obs = document.getElementById("observations");
-    obs.innerHTML = "";
-    safe(data?.logic_breakdown?.key_observations).forEach(x => {
-        const li = document.createElement("li");
-        li.textContent = x;
-        obs.appendChild(li);
+    const observations =
+        document.getElementById(
+            "observations"
+        );
+
+    observations.innerHTML = "";
+
+    safeArray(
+        data?.logic_breakdown
+            ?.key_observations
+    ).forEach(item => {
+
+        const li =
+            document.createElement("li");
+
+        li.textContent = item;
+
+        observations.appendChild(li);
     });
 
-    const fr = document.getElementById("framing");
-    fr.innerHTML = "";
-    safe(data?.logic_breakdown?.framing_notes).forEach(x => {
-        const li = document.createElement("li");
-        li.textContent = x;
-        fr.appendChild(li);
+    const framing =
+        document.getElementById(
+            "framing"
+        );
+
+    framing.innerHTML = "";
+
+    safeArray(
+        data?.logic_breakdown
+            ?.framing_notes
+    ).forEach(item => {
+
+        const li =
+            document.createElement("li");
+
+        li.textContent = item;
+
+        framing.appendChild(li);
     });
 
-    document.getElementById("node").innerText =
-        data.node || "unknown";
+    document.getElementById("node")
+        .innerText =
+        data.node || "UNKNOWN";
 }
 
 </script>
