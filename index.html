@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -18,7 +17,7 @@
 body{
     background:var(--bg);
     color:var(--text);
-    font-family:'Courier New', monospace;
+    font-family:monospace;
     display:flex;
     justify-content:center;
     align-items:center;
@@ -33,78 +32,47 @@ body{
 }
 
 h1{
-    color:var(--accent);
     text-align:center;
-    text-shadow:0 0 10px rgba(0,255,65,.4);
+    color:var(--accent);
 }
 
 .manifesto{
     background:var(--subtle);
-    border-left:4px solid var(--accent);
     padding:15px;
     margin:20px 0;
+    border-left:4px solid var(--accent);
 }
 
-input,
 textarea{
     width:100%;
-    box-sizing:border-box;
+    height:220px;
     background:#000;
     color:var(--accent);
     border:1px solid #333;
     padding:12px;
-    margin-bottom:10px;
-    font-family:inherit;
-}
-
-textarea{
-    height:180px;
-    resize:vertical;
+    box-sizing:border-box;
 }
 
 button{
     width:100%;
     padding:15px;
-    border:none;
     background:var(--accent);
     color:#000;
+    border:none;
     font-weight:bold;
     cursor:pointer;
-    letter-spacing:1px;
-}
-
-button:hover{
-    opacity:.9;
+    margin-top:10px;
 }
 
 #overlay{
     position:fixed;
     inset:0;
-    background:rgba(0,0,0,.95);
+    background:rgba(0,0,0,.9);
     display:none;
     justify-content:center;
     align-items:center;
     flex-direction:column;
     z-index:999;
-}
-
-.scanline{
-    position:absolute;
-    width:100%;
-    height:2px;
-    background:var(--accent);
-    opacity:.3;
-    animation:scan 2s linear infinite;
-}
-
-@keyframes scan{
-    from{ top:0; }
-    to{ top:100%; }
-}
-
-#status{
-    color:var(--accent);
-    font-size:1.2rem;
 }
 
 #results{
@@ -117,194 +85,134 @@ button:hover{
 
 .error{
     color:#ff5555;
-    margin-bottom:10px;
 }
 
 ul{
-    padding-left:20px;
-}
-
-.small{
-    color:#777;
-    font-size:.9rem;
+    margin-top:5px;
 }
 
 </style>
-
 </head>
-
 <body>
 
 <div id="overlay">
-    <div class="scanline"></div>
-    <div id="status">ANALYZING...</div>
+    <h2 id="status" style="color:#00ff41;">
+        ANALYZING...
+    </h2>
 </div>
 
 <div class="container">
 
-```
 <h1>GT SYSTEMS</h1>
 
 <div class="manifesto">
-    <strong>[ INDEPENDENT SENSOR NODE ]</strong>
-    <br><br>
-    "The oblong box in the corner of the room doesn't inform you; it programs you.
-    An independent person is the only thing a system cannot own."
+"The oblong box in the corner of the room doesn't inform you; it programs you.
+An independent signal is the only thing a system cannot own."
 </div>
-
-<div class="manifesto">
-    <strong>HOW TO USE</strong>
-    <ol>
-        <li>Paste a YouTube URL OR article text.</li>
-        <li>Leave one field blank if using the other.</li>
-        <li>Click ANALYZE.</li>
-        <li>Review persuasion signals, framing patterns and narrative structure.</li>
-    </ol>
-</div>
-
-<input
-    id="inputUrl"
-    placeholder="YouTube URL (optional)"
->
 
 <textarea
-    id="inputText"
-    placeholder="Paste article, transcript, social media post, or other text..."
+id="input"
+placeholder="Paste article, transcript, social post, or YouTube URL..."
 ></textarea>
 
 <button onclick="run()">
-    ANALYZE GROUND TRUTH
+ANALYZE GROUND TRUTH
 </button>
 
 <div id="results">
 
-    <div id="error" class="error"></div>
+<div class="error" id="error"></div>
 
-    <p>
-        <strong>Persuasion Score:</strong>
-        <span id="score">-</span>
-    </p>
+<p>
+<strong>Persuasion Score:</strong>
+<span id="score">-</span>
+</p>
 
-    <p>
-        <strong>Techniques Detected:</strong><br>
-        <span id="triggers"></span>
-    </p>
+<p>
+<strong>Techniques Detected:</strong>
+<span id="triggers"></span>
+</p>
 
-    <p>
-        <strong>Summary:</strong><br>
-        <span id="summary"></span>
-    </p>
+<p>
+<strong>Summary:</strong>
+<span id="summary"></span>
+</p>
 
-    <p><strong>Key Observations:</strong></p>
+<p><strong>Key Observations:</strong></p>
+<ul id="observations"></ul>
 
-    <ul id="observations"></ul>
+<p><strong>Framing Notes:</strong></p>
+<ul id="framing"></ul>
 
-    <p><strong>Framing Notes:</strong></p>
-
-    <ul id="framing"></ul>
-
-    <p class="small">
-        Source Node:
-        <span id="node"></span>
-    </p>
+<p>
+<strong>Source Node:</strong>
+<span id="node"></span>
+</p>
 
 </div>
-```
 
 </div>
 
 <script>
 
-async function run() {
+async function run(){
 
-    const url =
-        document.getElementById("inputUrl")
+    const input =
+        document
+        .getElementById("input")
         .value
         .trim();
 
-    const text =
-        document.getElementById("inputText")
-        .value
-        .trim();
-
-    if (!url && !text) {
-
-        alert(
-            "Paste article text or a YouTube URL."
-        );
-
+    if(!input){
+        alert("Input required");
         return;
     }
 
-    const overlay =
-        document.getElementById("overlay");
-
-    overlay.style.display = "flex";
+    document
+        .getElementById("overlay")
+        .style.display="flex";
 
     const status =
         document.getElementById("status");
 
-    const messages = [
-        "DETECTING INPUT TYPE...",
+    const msgs=[
+        "DETECTING INPUT...",
         "EXTRACTING SIGNAL...",
-        "SCANNING LANGUAGE...",
+        "ANALYZING LANGUAGE...",
         "IDENTIFYING FRAMING...",
-        "AGGREGATING RESULTS..."
+        "GENERATING REPORT..."
     ];
 
-    let index = 0;
+    let i=0;
 
-    const animation =
-        setInterval(() => {
+    const anim=setInterval(()=>{
+        status.innerText=msgs[i%msgs.length];
+        i++;
+    },1000);
 
-            status.innerText =
-                messages[index % messages.length];
+    try{
 
-            index++;
+        const res=
+            await fetch("/api/analyze",{
+                method:"POST",
+                headers:{
+                    "Content-Type":"application/json"
+                },
+                body:JSON.stringify({
+                    input
+                })
+            });
 
-        }, 1200);
+        const data=
+            await res.json();
 
-    try {
+        clearInterval(anim);
 
-        const payload =
-            url ? { url } : { text };
+        document
+            .getElementById("overlay")
+            .style.display="none";
 
-        const response =
-            await fetch(
-                "/api/analyze",
-                {
-                    method:"POST",
-
-                    headers:{
-                        "Content-Type":"application/json"
-                    },
-
-                    body:JSON.stringify(payload)
-                }
-            );
-
-        const raw =
-            await response.text();
-
-        let data;
-
-        try {
-
-            data = JSON.parse(raw);
-
-        } catch {
-
-            throw new Error(
-                raw.substring(0,300)
-            );
-        }
-
-        clearInterval(animation);
-
-        overlay.style.display = "none";
-
-        if (!response.ok || data.error) {
-
+        if(!res.ok){
             throw new Error(
                 data.error ||
                 "Analysis failed"
@@ -313,93 +221,101 @@ async function run() {
 
         render(data);
 
-    } catch(err) {
+    }catch(err){
 
-        clearInterval(animation);
+        clearInterval(anim);
 
-        overlay.style.display = "none";
+        document
+            .getElementById("overlay")
+            .style.display="none";
 
-        document.getElementById("results")
-            .style.display = "block";
+        document
+            .getElementById("results")
+            .style.display="block";
 
-        document.getElementById("error")
-            .innerText = err.message;
+        document
+            .getElementById("error")
+            .innerText=err.message;
     }
 }
 
-function safeArray(value){
-
-    return Array.isArray(value)
-        ? value
+function safeArray(v){
+    return Array.isArray(v)
+        ? v
         : [];
 }
 
 function render(data){
 
-    document.getElementById("results")
-        .style.display = "block";
+    document
+        .getElementById("results")
+        .style.display="block";
 
-    document.getElementById("error")
-        .innerText = "";
+    document
+        .getElementById("error")
+        .innerText="";
 
-    document.getElementById("score")
-        .innerText =
-        data.noise_score ?? 0;
+    document
+        .getElementById("score")
+        .innerText=data.noise_score ?? 0;
 
-    document.getElementById("triggers")
-        .innerText =
-        safeArray(
-            data.emotional_triggers
-        ).join(", ");
+    document
+        .getElementById("triggers")
+        .innerText=
+            safeArray(
+                data.emotional_triggers
+            ).join(", ");
 
-    document.getElementById("summary")
-        .innerText =
-        data?.logic_breakdown?.summary ||
-        "No summary available";
+    document
+        .getElementById("summary")
+        .innerText=
+            data.logic_breakdown?.summary
+            || "";
 
-    const observations =
+    const obs=
         document.getElementById(
             "observations"
         );
 
-    observations.innerHTML = "";
+    obs.innerHTML="";
 
     safeArray(
-        data?.logic_breakdown
-            ?.key_observations
-    ).forEach(item => {
+        data.logic_breakdown
+        ?.key_observations
+    ).forEach(x=>{
 
-        const li =
+        const li=
             document.createElement("li");
 
-        li.textContent = item;
+        li.textContent=x;
 
-        observations.appendChild(li);
+        obs.appendChild(li);
     });
 
-    const framing =
+    const fr=
         document.getElementById(
             "framing"
         );
 
-    framing.innerHTML = "";
+    fr.innerHTML="";
 
     safeArray(
-        data?.logic_breakdown
-            ?.framing_notes
-    ).forEach(item => {
+        data.logic_breakdown
+        ?.framing_notes
+    ).forEach(x=>{
 
-        const li =
+        const li=
             document.createElement("li");
 
-        li.textContent = item;
+        li.textContent=x;
 
-        framing.appendChild(li);
+        fr.appendChild(li);
     });
 
-    document.getElementById("node")
-        .innerText =
-        data.node || "UNKNOWN";
+    document
+        .getElementById("node")
+        .innerText=
+            data.node || "unknown";
 }
 
 </script>
