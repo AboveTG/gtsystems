@@ -1,42 +1,45 @@
 export default async function handler(req, res) {
 
-    if (req.method !== "POST") {
-        return res.status(405).json({
-            error: "Method not allowed"
-        });
-    }
+```
+if (req.method !== "POST") {
+    return res.status(405).json({
+        error: "Method not allowed"
+    });
+}
 
-    let { text, url } = req.body || {};
+let { text, url } = req.body || {};
 
-    if (!text && !url) {
-        return res.status(400).json({
-            error: "No input provided"
-        });
-    }
+if (!text && !url) {
+    return res.status(400).json({
+        error: "No input provided"
+    });
+}
 
-    // -------------------------
-    // YOUTUBE SUPPORT
-    // -------------------------
+// =====================================
+// YOUTUBE TRANSCRIPT EXTRACTION
+// =====================================
 
-    function extractVideoId(inputUrl) {
+function extractVideoId(inputUrl) {
 
-        try {
+    try {
 
-            const u = new URL(inputUrl);
+        const u = new URL(inputUrl);
 
-            if (u.hostname.includes("youtu.be")) {
-                return u.pathname.slice(1);
-            }
-
-            return u.searchParams.get("v");
-
-        } catch {
-
-            return null;
+        if (u.hostname.includes("youtu.be")) {
+            return u.pathname.slice(1);
         }
-    }
 
-    async function fetchTranscript(videoUrl) {
+        return u.searchParams.get("v");
+
+    } catch {
+
+        return null;
+    }
+}
+
+async function fetchTranscript(videoUrl) {
+
+    try {
 
         const { YoutubeTranscript } =
             await import("youtube-transcript");
@@ -45,235 +48,392 @@ export default async function handler(req, res) {
             extractVideoId(videoUrl);
 
         if (!videoId) {
-            throw new Error("Invalid YouTube URL");
+            throw new Error(
+                "Invalid YouTube URL"
+            );
         }
 
         const transcript =
-            await YoutubeTranscript.fetchTranscript(videoId);
+            await YoutubeTranscript.fetchTranscript(
+                videoId
+            );
 
         return transcript
             .map(x => x.text)
             .join(" ")
             .replace(/\s+/g, " ")
             .trim();
+
+    } catch (err) {
+
+        throw new Error(
+            "Transcript extraction failed: " +
+            err.message
+        );
+    }
+}
+
+if (url) {
+
+    try {
+
+        text =
+            await fetchTranscript(url);
+
+    } catch (err) {
+
+        return res.status(500).json({
+            error: err.message
+        });
+    }
+}
+
+// =====================================
+// CHUNKING
+// =====================================
+
+function chunkText(
+    input,
+    size = 2500
+) {
+
+    const chunks = [];
+
+    for (
+        let i = 0;
+        i < input.length;
+        i += size
+    ) {
+
+        chunks.push(
+            input.slice(
+                i,
+                i + size
+            )
+        );
     }
 
-    if (url) {
+    return chunks;
+}
 
-        try {
+const chunks =
+    chunkText(text);
 
-            text = await fetchTranscript(url);
+// =====================================
+// MODEL CONFIG
+// =====================================
 
-        } catch (err) {
+const provider = {
 
-            return res.status(500).json({
-                error: "Transcript extraction failed",
-                details: err.message
-            });
-        }
-    }
+    name: "GROQ",
 
-    // -------------------------
-    // CHUNKING
-    // -------------------------
+    url:
+        "https://api.groq.com/openai/v1/chat/completions",
 
-    function chunkText(str, size = 2500) {
+    headers: {
 
-        const chunks = [];
+        Authorization:
+            `Bearer ${process.env.GROQ_API_KEY}`,
 
-        for (let i = 0; i < str.length; i += size) {
-            chunks.push(str.slice(i, i + size));
-        }
+        "Content-Type":
+            "application/json"
+    },
 
-        return chunks;
-    }
+    model:
+        "llama-3.3-70b-versatile"
+};
 
-    const chunks = chunkText(text);
+const SYSTEM_PROMPT = `
+```
 
-    // -------------------------
-    // MODEL
-    // -------------------------
+You are a linguistic analysis engine.
 
-    const provider = {
-        name: "GROQ",
-        url: "https://api.groq.com/openai/v1/chat/completions",
-        headers: {
-            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-            "Content-Type": "application/json"
-        },
-        model: "llama-3.3-70b-versatile"
-    };
+Analyze ONLY language structure.
 
-    const SYSTEM_PROMPT = `
-You are a language framing analysis engine.
+Do NOT determine truth.
 
-Analyze:
+Identify:
 
-- persuasion tactics
-- emotional language
-- authority appeals
-- fear appeals
-- urgency construction
-- loaded language
-- attribution patterns
-- narrative shaping
+* persuasion techniques
+* emotional language
+* authority appeals
+* urgency framing
+* fear appeals
+* selective framing
+* attribution patterns
+* narrative shaping
 
 Return ONLY JSON.
 
 {
-  "noise_score": number,
-  "emotional_triggers": string[],
-  "logic_breakdown": {
-    "summary": string,
-    "key_observations": string[],
-    "framing_notes": string[]
-  }
+"noise_score": number,
+"emotional_triggers": string[],
+"logic_breakdown": {
+"summary": string,
+"key_observations": string[],
+"framing_notes": string[]
+}
 }
 `;
 
-    function safeParse(content) {
+````
+// =====================================
+// SAFE PARSER
+// =====================================
 
-        if (!content) return null;
+function safeParse(content) {
 
-        const cleaned = content
-            .replace(/```json/g, "")
-            .replace(/```/g, "")
-            .trim();
+    if (!content)
+        return null;
 
-        const start = cleaned.indexOf("{");
-        const end = cleaned.lastIndexOf("}");
+    try {
 
-        if (start === -1 || end === -1) {
+        const cleaned =
+            content
+                .replace(/```json/g, "")
+                .replace(/```/g, "")
+                .trim();
+
+        const start =
+            cleaned.indexOf("{");
+
+        const end =
+            cleaned.lastIndexOf("}");
+
+        if (
+            start === -1 ||
+            end === -1
+        ) {
             return null;
         }
 
-        try {
-
-            return JSON.parse(
-                cleaned.slice(start, end + 1)
-            );
-
-        } catch {
-
-            return null;
-        }
-    }
-
-    async function analyzeChunk(chunk) {
-
-        const response = await fetch(
-            provider.url,
-            {
-                method: "POST",
-
-                headers: provider.headers,
-
-                body: JSON.stringify({
-                    model: provider.model,
-                    temperature: 0.2,
-
-                    response_format: {
-                        type: "json_object"
-                    },
-
-                    messages: [
-                        {
-                            role: "system",
-                            content: SYSTEM_PROMPT
-                        },
-                        {
-                            role: "user",
-                            content: chunk
-                        }
-                    ]
-                })
-            }
+        return JSON.parse(
+            cleaned.slice(
+                start,
+                end + 1
+            )
         );
 
-        if (!response.ok) {
+    } catch {
 
-            const err =
-                await response.text();
+        return null;
+    }
+}
 
-            console.error(err);
+// =====================================
+// CHUNK ANALYSIS
+// =====================================
+
+async function analyzeChunk(
+    chunk
+) {
+
+    try {
+
+        const response =
+            await fetch(
+                provider.url,
+                {
+                    method:
+                        "POST",
+
+                    headers:
+                        provider.headers,
+
+                    body:
+                        JSON.stringify({
+
+                            model:
+                                provider.model,
+
+                            temperature:
+                                0.2,
+
+                            response_format:
+                                {
+                                    type:
+                                        "json_object"
+                                },
+
+                            messages: [
+
+                                {
+                                    role:
+                                        "system",
+
+                                    content:
+                                        SYSTEM_PROMPT
+                                },
+
+                                {
+                                    role:
+                                        "user",
+
+                                    content:
+                                        chunk
+                                }
+                            ]
+                        })
+                }
+            );
+
+        if (
+            !response.ok
+        ) {
+
+            console.error(
+                await response.text()
+            );
 
             return null;
         }
 
-        const data =
+        const api =
             await response.json();
 
         const content =
-            data?.choices?.[0]?.message?.content;
+            api?.choices?.[0]
+                ?.message?.content;
 
-        return safeParse(content);
+        return safeParse(
+            content
+        );
+
+    } catch (err) {
+
+        console.error(err);
+
+        return null;
     }
+}
+
+// =====================================
+// EXECUTION
+// =====================================
+
+try {
 
     const results = [];
 
-    for (const chunk of chunks) {
+    for (
+        const chunk
+        of chunks
+    ) {
 
         const result =
-            await analyzeChunk(chunk);
+            await analyzeChunk(
+                chunk
+            );
 
-        if (result) {
-            results.push(result);
+        if (
+            result
+        ) {
+
+            results.push(
+                result
+            );
         }
     }
 
-    if (!results.length) {
+    if (
+        !results.length
+    ) {
 
-        return res.status(500).json({
-            error: "No valid analysis returned"
-        });
+        return res
+            .status(500)
+            .json({
+                error:
+                    "No valid analysis returned"
+            });
     }
 
     const scores =
-        results.map(r => Number(r.noise_score || 0));
+        results.map(
+            r =>
+                Number(
+                    r.noise_score || 0
+                )
+        );
 
     const triggers =
         results.flatMap(
-            r => r.emotional_triggers || []
+            r =>
+                r.emotional_triggers || []
         );
 
     const observations =
         results.flatMap(
-            r => r.logic_breakdown?.key_observations || []
+            r =>
+                r.logic_breakdown
+                    ?.key_observations || []
         );
 
     const framing =
         results.flatMap(
-            r => r.logic_breakdown?.framing_notes || []
+            r =>
+                r.logic_breakdown
+                    ?.framing_notes || []
         );
 
-    const summary =
-        results[0]?.logic_breakdown?.summary ||
-        "Analysis complete.";
+    return res
+        .status(200)
+        .json({
 
-    return res.status(200).json({
+            noise_score:
 
-        noise_score:
-            Number(
-                (
-                    scores.reduce((a,b)=>a+b,0) /
-                    scores.length
-                ).toFixed(2)
-            ),
+                Number(
+                    (
+                        scores.reduce(
+                            (
+                                a,
+                                b
+                            ) =>
+                                a + b,
+                            0
+                        ) /
+                        scores.length
+                    ).toFixed(2)
+                ),
 
-        emotional_triggers:
-            [...new Set(triggers)],
+            emotional_triggers:
 
-        logic_breakdown: {
+                [...new Set(
+                    triggers
+                )],
 
-            summary,
+            logic_breakdown: {
 
-            key_observations:
-                [...new Set(observations)],
+                summary:
+                    results?.[0]
+                        ?.logic_breakdown
+                        ?.summary ||
+                    "Analysis complete.",
 
-            framing_notes:
-                [...new Set(framing)]
-        },
+                key_observations:
+                    [...new Set(
+                        observations
+                    )],
 
-        node: provider.name
-    });
+                framing_notes:
+                    [...new Set(
+                        framing
+                    )]
+            },
+
+            node:
+                provider.name
+        });
+
+} catch (err) {
+
+    return res
+        .status(500)
+        .json({
+
+            error:
+                err.message
+        });
+}
+````
+
 }
