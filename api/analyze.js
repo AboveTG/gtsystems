@@ -14,9 +14,9 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "No input provided" });
     }
 
-    // =====================================================
+    // =========================
     // DETECTION
-    // =====================================================
+    // =========================
 
     function isYouTubeUrl(str) {
         try {
@@ -40,84 +40,67 @@ export default async function handler(req, res) {
         }
     }
 
-    // =====================================================
-    // LAYER 1 — youtube-transcript
-    // =====================================================
-    async function layer1(videoId) {
+    // =========================
+    // LAYERS
+    // =========================
+
+    async function layer1(id) {
         try {
             const mod = await import("youtube-transcript");
             const yt = mod.YoutubeTranscript;
 
-            const t = await yt.fetchTranscript(videoId);
-
+            const t = await yt.fetchTranscript(id);
             return t.map(x => x.text).join(" ").replace(/\s+/g, " ").trim();
         } catch {
             return null;
         }
     }
 
-    // =====================================================
-    // LAYER 2 — youtubei.js captions
-    // =====================================================
-    async function layer2(videoId) {
+    async function layer2(id) {
         try {
             const { Innertube } = await import("youtubei.js");
 
             const yt = await Innertube.create();
-            const info = await yt.getInfo(videoId);
+            const info = await yt.getInfo(id);
             const captions = await info.getTranscript();
 
-            const segments =
-                captions?.transcript?.content?.body?.initial_segments;
+            const seg = captions?.transcript?.content?.body?.initial_segments;
+            if (!seg) return null;
 
-            if (!segments) return null;
-
-            return segments
-                .map(s => s.snippet?.text || "")
-                .join(" ")
-                .replace(/\s+/g, " ")
-                .trim();
-
+            return seg.map(s => s.snippet?.text || "").join(" ");
         } catch {
             return null;
         }
     }
 
-    // =====================================================
-    // LAYER 3 — metadata fallback (NO INFERENCE ALLOWED)
-    // =====================================================
-    async function layer3(videoUrl, videoId) {
+    async function layer3(url, id) {
         try {
-            const res = await fetch(
-                `https://www.youtube.com/oembed?url=${encodeURIComponent(videoUrl)}&format=json`
+            const r = await fetch(
+                `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`
             );
-
-            const data = await res.json();
+            const d = await r.json();
 
             return `
-[METADATA ONLY — NO INTERPRETATION]
+[METADATA MODE - NO INFERENCE]
 
-TITLE: ${data?.title || "unknown"}
-CHANNEL: ${data?.author_name || "unknown"}
-VIDEO_ID: ${videoId}
+TITLE: ${d?.title || "unknown"}
+CHANNEL: ${d?.author_name || "unknown"}
+VIDEO_ID: ${id}
 
-RULE: Do not infer topic, meaning, or intent.
-Treat all fields as raw strings only.
+RULE: Do not infer meaning or topic.
             `.trim();
-
         } catch {
             return `
-[MINIMAL SIGNAL]
+[MINIMAL MODE]
 
-VIDEO_ID: ${videoId}
-RULE: No metadata available. No inference allowed.
+VIDEO_ID: ${id}
             `.trim();
         }
     }
 
-    // =====================================================
-    // INGESTION PIPELINE
-    // =====================================================
+    // =========================
+    // INGESTION
+    // =========================
 
     let text = input;
     let source_type = "text";
@@ -133,9 +116,27 @@ RULE: No metadata available. No inference allowed.
             await layer3(input, id);
     }
 
-    // =====================================================
-    // GROQ CONFIG
-    // =====================================================
+    // =========================
+    // SIGNAL CLASSIFIER
+    // =========================
+
+    function detectSignalLevel(t, type) {
+        if (!t || t.length < 60) return 0;
+
+        if (type === "youtube") {
+            if (t.includes("[METADATA MODE")) return 1;
+            if (t.length < 300) return 2;
+            return 3;
+        }
+
+        return t.length > 800 ? 3 : 2;
+    }
+
+    const signal_level = detectSignalLevel(text, source_type);
+
+    // =========================
+    // GROQ
+    // =========================
 
     const provider = {
         name: "GROQ",
@@ -147,29 +148,14 @@ RULE: No metadata available. No inference allowed.
         model: "llama-3.3-70b-versatile"
     };
 
-    // =====================================================
-    // STRICT SYSTEM PROMPT (NO HALLUCINATION MODE)
-    // =====================================================
-
     const SYSTEM_PROMPT = `
 You are a STRICT linguistic feature extractor.
 
 RULES:
 - Use ONLY provided text.
-- Do NOT infer meaning, topic, intent, or context.
-- Do NOT interpret titles, metadata, or sparse signals.
-- Do NOT guess what content is "about".
-- Only analyze observable language patterns.
-
-FOCUS ONLY ON:
-- lexical choice
-- repetition patterns
-- emotional words explicitly present
-- sentence structure
-- modality (commands/questions/assertions)
-
-If signal is insufficient:
-- explicitly state low signal in summary
+- Do NOT infer meaning or topic.
+- Do NOT guess context.
+- Only analyze explicit language features.
 
 Return ONLY JSON:
 
@@ -185,33 +171,18 @@ Return ONLY JSON:
 }
 `;
 
-    // =====================================================
-    // SAFE PARSER
-    // =====================================================
-
-    function safeParse(content) {
-        if (!content) return null;
-
+    function safeParse(c) {
+        if (!c) return null;
         try {
-            const cleaned = content
-                .replace(/```json/g, "")
-                .replace(/```/g, "")
-                .trim();
-
-            const start = cleaned.indexOf("{");
-            const end = cleaned.lastIndexOf("}");
-
-            if (start === -1 || end === -1) return null;
-
-            return JSON.parse(cleaned.slice(start, end + 1));
+            const cleaned = c.replace(/```json/g, "").replace(/```/g, "");
+            const s = cleaned.indexOf("{");
+            const e = cleaned.lastIndexOf("}");
+            if (s === -1 || e === -1) return null;
+            return JSON.parse(cleaned.slice(s, e + 1));
         } catch {
             return null;
         }
     }
-
-    // =====================================================
-    // FILTER TRIGGERS
-    // =====================================================
 
     function clean(arr = []) {
         return [...new Set(arr)]
@@ -219,12 +190,12 @@ Return ONLY JSON:
             .filter(x => x.length > 2);
     }
 
-    // =====================================================
+    // =========================
     // MODEL CALL
-    // =====================================================
+    // =========================
 
     try {
-        const response = await fetch(provider.url, {
+        const r = await fetch(provider.url, {
             method: "POST",
             headers: provider.headers,
             body: JSON.stringify({
@@ -238,51 +209,59 @@ Return ONLY JSON:
             })
         });
 
-        const raw = await response.text();
+        const raw = await r.text();
 
-        if (!response.ok) {
+        if (!r.ok) {
             return res.status(500).json({
                 error: "Model request failed",
-                details: raw?.slice(0, 500)
+                details: raw?.slice(0, 400)
             });
         }
 
-        let api;
-        try {
-            api = JSON.parse(raw);
-        } catch {
-            return res.status(500).json({
-                error: "Invalid provider response",
-                details: raw?.slice(0, 500)
-            });
-        }
-
+        const api = JSON.parse(raw);
         const content = api?.choices?.[0]?.message?.content;
+
         const parsed = safeParse(content);
 
         if (!parsed) {
             return res.status(500).json({
-                error: "Invalid model output",
-                raw: content
+                error: "Invalid model output"
             });
         }
 
         return res.status(200).json({
-            noise_score: parsed.noise_score ?? 0,
-            confidence: parsed.confidence ?? 0,
+            noise_score:
+                signal_level === 1 ? null : parsed.noise_score ?? 0,
+
+            confidence:
+                signal_level === 1 ? 0 : parsed.confidence ?? 0,
+
+            signal_level,
+
             emotional_triggers: clean(parsed.emotional_triggers),
-            logic_breakdown: parsed.logic_breakdown ?? {
-                summary: "Analysis complete.",
-                key_observations: [],
-                framing_notes: []
+
+            logic_breakdown: {
+                summary:
+                    signal_level === 1
+                        ? "Insufficient signal (metadata-only input)."
+                        : parsed.logic_breakdown?.summary,
+
+                key_observations:
+                    signal_level === 1
+                        ? ["No transcript or linguistic body available"]
+                        : parsed.logic_breakdown?.key_observations || [],
+
+                framing_notes:
+                    signal_level === 1
+                        ? ["Scoring disabled due to low signal"]
+                        : parsed.logic_breakdown?.framing_notes || []
             },
+
             source_type,
             node: provider.name
         });
 
-    } catch (err) {
-        return res.status(500).json({
-            error: err.message
-        });
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
     }
 }
