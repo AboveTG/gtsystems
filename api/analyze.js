@@ -138,25 +138,126 @@ VIDEO_ID: ${id}
     // GROQ
     // =========================
 
-    if (signal_level === 1) {
-    return res.status(200).json({
-        noise_score: null,
-        confidence: 0,
-        signal_level: 1,
-        emotional_triggers: [],
-        logic_breakdown: {
-            summary: "Metadata-only input. No linguistic analysis performed.",
-            key_observations: [
-                "Only metadata available",
-                "No transcript or text body present"
-            ],
-            framing_notes: [
-                "Model execution skipped (signal guard)"
-            ]
+    export default async function handler(req, res) {
+
+    if (req.method !== "POST") {
+        return res.status(405).json({ error: "Method not allowed" });
+    }
+
+    const body = req.body || {};
+
+    const input =
+        typeof body.input === "string" ? body.input.trim()
+        : typeof body.text === "string" ? body.text.trim()
+        : null;
+
+    if (!input) {
+        return res.status(400).json({ error: "No input provided" });
+    }
+
+    // =========================
+    // PROVIDER (MUST BE FIRST)
+    // =========================
+
+    const provider = {
+        name: "GROQ",
+        url: "https://api.groq.com/openai/v1/chat/completions",
+        headers: {
+            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+            "Content-Type": "application/json"
         },
-        source_type,
-        node: provider.name
-    });
+        model: "llama-3.3-70b-versatile"
+    };
+
+    // =========================
+    // INGESTION LOGIC
+    // =========================
+
+    function isYouTubeUrl(str) {
+        try {
+            const u = new URL(str);
+            return u.hostname.includes("youtube.com") || u.hostname.includes("youtu.be");
+        } catch {
+            return false;
+        }
+    }
+
+    function extractVideoId(url) {
+        try {
+            const u = new URL(url);
+            if (u.hostname.includes("youtu.be")) return u.pathname.slice(1);
+            return u.searchParams.get("v");
+        } catch {
+            return null;
+        }
+    }
+
+    let text = input;
+    let source_type = "text";
+
+    if (isYouTubeUrl(input)) {
+        source_type = "youtube";
+
+        const id = extractVideoId(input);
+
+        try {
+            const mod = await import("youtube-transcript");
+            const yt = mod.YoutubeTranscript;
+
+            const t = await yt.fetchTranscript(id);
+
+            text = t.map(x => x.text).join(" ");
+        } catch {
+            text = `
+[METADATA ONLY MODE]
+VIDEO_ID: ${id}
+            `.trim();
+        }
+    }
+
+    // =========================
+    // SIGNAL LEVEL
+    // =========================
+
+    function detectSignalLevel(t, type) {
+        if (!t || t.length < 60) return 0;
+        if (type === "youtube" && t.includes("METADATA ONLY")) return 1;
+        if (t.length < 300) return 2;
+        return 3;
+    }
+
+    const signal_level = detectSignalLevel(text, source_type);
+
+    // =========================
+    // HARD GATE (CRITICAL FIX)
+    // =========================
+
+    if (signal_level === 1) {
+        return res.status(200).json({
+            noise_score: null,
+            confidence: 0,
+            signal_level: 1,
+            emotional_triggers: [],
+            logic_breakdown: {
+                summary: "Metadata-only input. Model skipped.",
+                key_observations: [
+                    "No transcript available",
+                    "No linguistic body present"
+                ],
+                framing_notes: [
+                    "Execution halted at signal gate"
+                ]
+            },
+            source_type,
+            node: provider.name
+        });
+    }
+
+    // =========================
+    // CONTINUE MODEL CALL ONLY IF SIGNAL IS VALID
+    // =========================
+
+    // (rest of GROQ call goes here)
 }
         const provider = {
         name: "GROQ",
