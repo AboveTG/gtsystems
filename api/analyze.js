@@ -43,7 +43,7 @@ export default async function handler(req, res) {
     // =====================================================
     // LAYER 1 — youtube-transcript
     // =====================================================
-    async function layer1_transcript(videoId) {
+    async function layer1(videoId) {
         try {
             const mod = await import("youtube-transcript");
             const yt = mod.YoutubeTranscript;
@@ -57,58 +57,60 @@ export default async function handler(req, res) {
     }
 
     // =====================================================
-    // LAYER 2 — youtubei.js captions (robust fallback)
+    // LAYER 2 — youtubei.js captions
     // =====================================================
-    async function layer2_youtubei(videoId) {
+    async function layer2(videoId) {
         try {
             const { Innertube } = await import("youtubei.js");
 
             const yt = await Innertube.create();
-
             const info = await yt.getInfo(videoId);
             const captions = await info.getTranscript();
 
-            if (!captions?.transcript?.content?.body?.initial_segments) {
-                return null;
-            }
+            const segments =
+                captions?.transcript?.content?.body?.initial_segments;
 
-            return captions.transcript.content.body.initial_segments
+            if (!segments) return null;
+
+            return segments
                 .map(s => s.snippet?.text || "")
                 .join(" ")
                 .replace(/\s+/g, " ")
                 .trim();
+
         } catch {
             return null;
         }
     }
 
     // =====================================================
-    // LAYER 3 — GUARANTEED METADATA FALLBACK
+    // LAYER 3 — metadata fallback (NO INFERENCE ALLOWED)
     // =====================================================
-    async function layer3_metadata(videoUrl, videoId) {
+    async function layer3(videoUrl, videoId) {
         try {
-            const oembedUrl =
-                `https://www.youtube.com/oembed?url=${encodeURIComponent(videoUrl)}&format=json`;
+            const res = await fetch(
+                `https://www.youtube.com/oembed?url=${encodeURIComponent(videoUrl)}&format=json`
+            );
 
-            const res = await fetch(oembedUrl);
             const data = await res.json();
 
-            const title = data?.title || "";
-            const author = data?.author_name || "";
-
             return `
-YouTube Video Metadata Fallback:
-Title: ${title}
-Channel: ${author}
-Video ID: ${videoId}
+[METADATA ONLY — NO INTERPRETATION]
 
-Note: Transcript unavailable. Analysis based on metadata only.
+TITLE: ${data?.title || "unknown"}
+CHANNEL: ${data?.author_name || "unknown"}
+VIDEO_ID: ${videoId}
+
+RULE: Do not infer topic, meaning, or intent.
+Treat all fields as raw strings only.
             `.trim();
+
         } catch {
             return `
-YouTube Video:
-Video ID: ${videoId}
-Note: Full extraction failed; operating on minimal signal.
+[MINIMAL SIGNAL]
+
+VIDEO_ID: ${videoId}
+RULE: No metadata available. No inference allowed.
             `.trim();
         }
     }
@@ -123,14 +125,12 @@ Note: Full extraction failed; operating on minimal signal.
     if (isYouTubeUrl(input)) {
         source_type = "youtube";
 
-        const videoId = extractVideoId(input);
+        const id = extractVideoId(input);
 
-        let extracted =
-            await layer1_transcript(videoId) ||
-            await layer2_youtubei(videoId) ||
-            await layer3_metadata(input, videoId);
-
-        text = extracted;
+        text =
+            await layer1(id) ||
+            await layer2(id) ||
+            await layer3(input, id);
     }
 
     // =====================================================
@@ -147,8 +147,29 @@ Note: Full extraction failed; operating on minimal signal.
         model: "llama-3.3-70b-versatile"
     };
 
+    // =====================================================
+    // STRICT SYSTEM PROMPT (NO HALLUCINATION MODE)
+    // =====================================================
+
     const SYSTEM_PROMPT = `
-You are a linguistic analysis engine.
+You are a STRICT linguistic feature extractor.
+
+RULES:
+- Use ONLY provided text.
+- Do NOT infer meaning, topic, intent, or context.
+- Do NOT interpret titles, metadata, or sparse signals.
+- Do NOT guess what content is "about".
+- Only analyze observable language patterns.
+
+FOCUS ONLY ON:
+- lexical choice
+- repetition patterns
+- emotional words explicitly present
+- sentence structure
+- modality (commands/questions/assertions)
+
+If signal is insufficient:
+- explicitly state low signal in summary
 
 Return ONLY JSON:
 
@@ -163,6 +184,10 @@ Return ONLY JSON:
   }
 }
 `;
+
+    // =====================================================
+    // SAFE PARSER
+    // =====================================================
 
     function safeParse(content) {
         if (!content) return null;
@@ -182,6 +207,16 @@ Return ONLY JSON:
         } catch {
             return null;
         }
+    }
+
+    // =====================================================
+    // FILTER TRIGGERS
+    // =====================================================
+
+    function clean(arr = []) {
+        return [...new Set(arr)]
+            .map(x => x.toLowerCase().trim())
+            .filter(x => x.length > 2);
     }
 
     // =====================================================
@@ -227,7 +262,7 @@ Return ONLY JSON:
 
         if (!parsed) {
             return res.status(500).json({
-                error: "Model returned invalid JSON",
+                error: "Invalid model output",
                 raw: content
             });
         }
@@ -235,7 +270,7 @@ Return ONLY JSON:
         return res.status(200).json({
             noise_score: parsed.noise_score ?? 0,
             confidence: parsed.confidence ?? 0,
-            emotional_triggers: parsed.emotional_triggers ?? [],
+            emotional_triggers: clean(parsed.emotional_triggers),
             logic_breakdown: parsed.logic_breakdown ?? {
                 summary: "Analysis complete.",
                 key_observations: [],
