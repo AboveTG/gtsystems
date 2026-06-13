@@ -1,23 +1,14 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GT Systems | Ground Truth</title>
+<title>GT Systems</title>
 
 <style>
-
-:root{
-    --bg:#0a0a0a;
-    --text:#e0e0e0;
-    --accent:#00ff41;
-    --subtle:#1a1a1a;
-}
-
-body{
-    background:var(--bg);
-    color:var(--text);
+body {
+    background:#0a0a0a;
+    color:#e0e0e0;
     font-family:monospace;
     display:flex;
     justify-content:center;
@@ -27,432 +18,117 @@ body{
     padding:20px;
 }
 
-.container{
-    width:100%;
-    max-width:900px;
-}
+.container { width:100%; max-width:900px; }
 
-h1{
-    text-align:center;
-    color:var(--accent);
-}
+h1 { text-align:center; color:#00ff41; }
 
-.manifesto{
-    background:var(--subtle);
-    padding:15px;
-    margin:20px 0;
-    border-left:4px solid var(--accent);
-}
-
-textarea{
+textarea {
     width:100%;
     height:220px;
     background:#000;
-    color:var(--accent);
+    color:#00ff41;
     border:1px solid #333;
     padding:12px;
-    box-sizing:border-box;
-    resize:vertical;
 }
 
-button{
+button {
     width:100%;
     padding:15px;
-    background:var(--accent);
-    color:#000;
+    background:#00ff41;
     border:none;
     font-weight:bold;
     cursor:pointer;
-    margin-top:10px;
 }
 
-button:hover{
-    opacity:.9;
-}
+#results { display:none; margin-top:20px; background:#111; padding:15px; }
 
-#overlay{
-    position:fixed;
-    inset:0;
-    background:rgba(0,0,0,.92);
-    display:none;
-    justify-content:center;
-    align-items:center;
-    flex-direction:column;
-    z-index:999;
-}
-
-#results{
-    display:none;
-    margin-top:20px;
-    background:#111;
-    border:1px solid #333;
-    padding:15px;
-}
-
-.error{
-    color:#ff5555;
-    margin-bottom:10px;
-}
-
-ul{
-    margin-top:5px;
-}
-
-.label{
-    color:var(--accent);
-}
-
-.small{
-    color:#888;
-    font-size:.9rem;
-}
-
+.error { color:red; }
 </style>
-
 </head>
 
 <body>
 
-<div id="overlay">
-
-```
-<h2
-    id="status"
-    style="color:#00ff41;"
->
-    ANALYZING...
-</h2>
-```
-
-</div>
-
 <div class="container">
-
-```
 <h1>GT SYSTEMS</h1>
 
-<div class="manifesto">
-    Independent signal extraction system
-</div>
+<textarea id="input" placeholder="Paste text OR YouTube URL"></textarea>
 
-<div class="small">
-    Paste an article, transcript, social media post, or a YouTube URL.
-</div>
-
-<br>
-
-<textarea
-    id="input"
-    placeholder="Paste article, transcript, social post, or YouTube URL..."
-></textarea>
-
-<button onclick="run()">
-    ANALYZE GROUND TRUTH
-</button>
-
-<div class="manifesto">
-    "The oblong box in the corner of the room doesn't inform you; it programs you. A system cannot own an independent person."
-</div>
+<button onclick="run()">ANALYZE</button>
 
 <div id="results">
+    <div class="error" id="error"></div>
 
-    <div
-        class="error"
-        id="error"
-    ></div>
+    <p>Score: <span id="score">-</span></p>
+    <p>Confidence: <span id="confidence">-</span></p>
+    <p>Source: <span id="sourceType">-</span></p>
 
-    <p>
-        <strong>Persuasion Score:</strong>
-        <span id="score">-</span>
-    </p>
-
-    <p>
-        <strong>Confidence:</strong>
-        <span id="confidence">-</span>
-    </p>
-
-    <p>
-        <strong>Source Type:</strong>
-        <span id="sourceType">-</span>
-    </p>
-
-    <p>
-        <strong>Techniques Detected:</strong>
-        <span id="triggers"></span>
-    </p>
-
-    <p>
-        <strong>Summary:</strong>
-        <span id="summary"></span>
-    </p>
-
-    <p>
-        <strong>Key Observations:</strong>
-    </p>
+    <p>Triggers: <span id="triggers"></span></p>
+    <p>Summary: <span id="summary"></span></p>
 
     <ul id="observations"></ul>
-
-    <p>
-        <strong>Framing Notes:</strong>
-    </p>
-
     <ul id="framing"></ul>
 
-    <p>
-        <strong>Source Node:</strong>
-        <span id="node"></span>
-    </p>
-
+    <p>Node: <span id="node"></span></p>
 </div>
-```
-
 </div>
 
 <script>
+async function run() {
+    const input = document.getElementById("input").value.trim();
+    if (!input) return alert("Input required");
 
-async function run(){
+    const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input })
+    });
 
-    const input =
-        document
-        .getElementById("input")
-        .value
-        .trim();
-
-    if(!input){
-
-        alert(
-            "Input required"
-        );
-
+    let data;
+    try {
+        data = await res.json();
+    } catch {
+        const text = await res.text();
+        document.getElementById("error").innerText =
+            "Server returned non-JSON response:\n" + text;
         return;
     }
 
-    document
-        .getElementById("overlay")
-        .style.display =
-        "flex";
+    document.getElementById("results").style.display = "block";
 
-    const status =
-        document.getElementById(
-            "status"
-        );
-
-    const msgs = [
-
-        "DETECTING INPUT...",
-
-        "EXTRACTING SIGNAL...",
-
-        "ANALYZING LANGUAGE...",
-
-        "IDENTIFYING FRAMING...",
-
-        "GENERATING REPORT..."
-    ];
-
-    let i = 0;
-
-    const anim =
-        setInterval(() => {
-
-            status.innerText =
-                msgs[
-                    i %
-                    msgs.length
-                ];
-
-            i++;
-
-        },1000);
-
-    try {
-
-        const res =
-            await fetch(
-                "/api/analyze",
-                {
-                    method:"POST",
-
-                    headers:{
-                        "Content-Type":
-                            "application/json"
-                    },
-
-                    body:
-                        JSON.stringify({
-
-                            input
-                        })
-                }
-            );
-
-        const data =
-            await res.json();
-
-        clearInterval(anim);
-
-        document
-            .getElementById(
-                "overlay"
-            )
-            .style.display =
-            "none";
-
-        if(!res.ok){
-
-            throw new Error(
-
-                data.error ||
-
-                "Analysis failed"
-            );
-        }
-
-        render(data);
-
-    } catch(err) {
-
-        clearInterval(anim);
-
-        document
-            .getElementById(
-                "overlay"
-            )
-            .style.display =
-            "none";
-
-        document
-            .getElementById(
-                "results"
-            )
-            .style.display =
-            "block";
-
-        document
-            .getElementById(
-                "error"
-            )
-            .innerText =
-            err.message;
+    if (!res.ok) {
+        document.getElementById("error").innerText = data.error || "Request failed";
+        return;
     }
-}
 
-function safeArray(v){
+    document.getElementById("error").innerText = "";
+    document.getElementById("score").innerText = data.noise_score ?? 0;
+    document.getElementById("confidence").innerText = data.confidence ?? 0;
+    document.getElementById("sourceType").innerText = data.source_type ?? "unknown";
 
-    return Array.isArray(v)
-        ? v
-        : [];
-}
+    document.getElementById("triggers").innerText =
+        (data.emotional_triggers || []).join(", ");
 
-function render(data){
+    document.getElementById("summary").innerText =
+        data.logic_breakdown?.summary || "";
 
-    document
-        .getElementById(
-            "results"
-        )
-        .style.display =
-        "block";
-
-    document
-        .getElementById(
-            "error"
-        )
-        .innerText =
-        "";
-
-    document
-        .getElementById(
-            "score"
-        )
-        .innerText =
-        data.noise_score ?? 0;
-
-    document
-        .getElementById(
-            "confidence"
-        )
-        .innerText =
-        data.confidence ?? 0;
-
-    document
-        .getElementById(
-            "sourceType"
-        )
-        .innerText =
-        data.source_type ||
-        "unknown";
-
-    document
-        .getElementById(
-            "triggers"
-        )
-        .innerText =
-        safeArray(
-            data.emotional_triggers
-        ).join(", ");
-
-    document
-        .getElementById(
-            "summary"
-        )
-        .innerText =
-        data.logic_breakdown
-            ?.summary ||
-        "";
-
-    const obs =
-        document.getElementById(
-            "observations"
-        );
-
+    const obs = document.getElementById("observations");
     obs.innerHTML = "";
-
-    safeArray(
-        data.logic_breakdown
-            ?.key_observations
-    ).forEach(x => {
-
-        const li =
-            document.createElement(
-                "li"
-            );
-
+    (data.logic_breakdown?.key_observations || []).forEach(x => {
+        const li = document.createElement("li");
         li.textContent = x;
-
         obs.appendChild(li);
     });
 
-    const fr =
-        document.getElementById(
-            "framing"
-        );
-
+    const fr = document.getElementById("framing");
     fr.innerHTML = "";
-
-    safeArray(
-        data.logic_breakdown
-            ?.framing_notes
-    ).forEach(x => {
-
-        const li =
-            document.createElement(
-                "li"
-            );
-
+    (data.logic_breakdown?.framing_notes || []).forEach(x => {
+        const li = document.createElement("li");
         li.textContent = x;
-
         fr.appendChild(li);
     });
 
-    document
-        .getElementById(
-            "node"
-        )
-        .innerText =
-        data.node ||
-        "unknown";
+    document.getElementById("node").innerText = data.node || "unknown";
 }
-
 </script>
 
 </body>
