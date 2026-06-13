@@ -138,7 +138,27 @@ VIDEO_ID: ${id}
     // GROQ
     // =========================
 
-    const provider = {
+    if (signal_level === 1) {
+    return res.status(200).json({
+        noise_score: null,
+        confidence: 0,
+        signal_level: 1,
+        emotional_triggers: [],
+        logic_breakdown: {
+            summary: "Metadata-only input. No linguistic analysis performed.",
+            key_observations: [
+                "Only metadata available",
+                "No transcript or text body present"
+            ],
+            framing_notes: [
+                "Model execution skipped (signal guard)"
+            ]
+        },
+        source_type,
+        node: provider.name
+    });
+}
+        const provider = {
         name: "GROQ",
         url: "https://api.groq.com/openai/v1/chat/completions",
         headers: {
