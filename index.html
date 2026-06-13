@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -28,7 +29,7 @@ body{
 
 .container{
     width:100%;
-    max-width:800px;
+    max-width:900px;
 }
 
 h1{
@@ -51,6 +52,7 @@ textarea{
     border:1px solid #333;
     padding:12px;
     box-sizing:border-box;
+    resize:vertical;
 }
 
 button{
@@ -64,10 +66,14 @@ button{
     margin-top:10px;
 }
 
+button:hover{
+    opacity:.9;
+}
+
 #overlay{
     position:fixed;
     inset:0;
-    background:rgba(0,0,0,.9);
+    background:rgba(0,0,0,.92);
     display:none;
     justify-content:center;
     align-items:center;
@@ -85,70 +91,120 @@ button{
 
 .error{
     color:#ff5555;
+    margin-bottom:10px;
 }
 
 ul{
     margin-top:5px;
 }
 
+.label{
+    color:var(--accent);
+}
+
+.small{
+    color:#888;
+    font-size:.9rem;
+}
+
 </style>
+
 </head>
+
 <body>
 
 <div id="overlay">
-    <h2 id="status" style="color:#00ff41;">
-        ANALYZING...
-    </h2>
+
+```
+<h2
+    id="status"
+    style="color:#00ff41;"
+>
+    ANALYZING...
+</h2>
+```
+
 </div>
 
 <div class="container">
 
+```
 <h1>GT SYSTEMS</h1>
 
 <div class="manifesto">
-"The oblong box in the corner of the room doesn't inform you; it programs you. A system cannot own an INDEPENDENT person."
+    Independent signal extraction system
 </div>
 
+<div class="small">
+    Paste an article, transcript, social media post, or a YouTube URL.
+</div>
+
+<br>
+
 <textarea
-id="input"
-placeholder="Paste article, transcript, social post, or YouTube URL..."
+    id="input"
+    placeholder="Paste article, transcript, social post, or YouTube URL..."
 ></textarea>
 
 <button onclick="run()">
-ANALYZE GROUND TRUTH
+    ANALYZE GROUND TRUTH
 </button>
+
+<div class="manifesto">
+    "The oblong box in the corner of the room doesn't inform you; it programs you. A system cannot own an independent person."
+</div>
 
 <div id="results">
 
-<div class="error" id="error"></div>
+    <div
+        class="error"
+        id="error"
+    ></div>
 
-<p>
-<strong>Persuasion Score:</strong>
-<span id="score">-</span>
-</p>
+    <p>
+        <strong>Persuasion Score:</strong>
+        <span id="score">-</span>
+    </p>
 
-<p>
-<strong>Techniques Detected:</strong>
-<span id="triggers"></span>
-</p>
+    <p>
+        <strong>Confidence:</strong>
+        <span id="confidence">-</span>
+    </p>
 
-<p>
-<strong>Summary:</strong>
-<span id="summary"></span>
-</p>
+    <p>
+        <strong>Source Type:</strong>
+        <span id="sourceType">-</span>
+    </p>
 
-<p><strong>Key Observations:</strong></p>
-<ul id="observations"></ul>
+    <p>
+        <strong>Techniques Detected:</strong>
+        <span id="triggers"></span>
+    </p>
 
-<p><strong>Framing Notes:</strong></p>
-<ul id="framing"></ul>
+    <p>
+        <strong>Summary:</strong>
+        <span id="summary"></span>
+    </p>
 
-<p>
-<strong>Source Node:</strong>
-<span id="node"></span>
-</p>
+    <p>
+        <strong>Key Observations:</strong>
+    </p>
+
+    <ul id="observations"></ul>
+
+    <p>
+        <strong>Framing Notes:</strong>
+    </p>
+
+    <ul id="framing"></ul>
+
+    <p>
+        <strong>Source Node:</strong>
+        <span id="node"></span>
+    </p>
 
 </div>
+```
 
 </div>
 
@@ -163,82 +219,126 @@ async function run(){
         .trim();
 
     if(!input){
-        alert("Input required");
+
+        alert(
+            "Input required"
+        );
+
         return;
     }
 
     document
         .getElementById("overlay")
-        .style.display="flex";
+        .style.display =
+        "flex";
 
     const status =
-        document.getElementById("status");
+        document.getElementById(
+            "status"
+        );
 
-    const msgs=[
+    const msgs = [
+
         "DETECTING INPUT...",
+
         "EXTRACTING SIGNAL...",
+
         "ANALYZING LANGUAGE...",
+
         "IDENTIFYING FRAMING...",
+
         "GENERATING REPORT..."
     ];
 
-    let i=0;
+    let i = 0;
 
-    const anim=setInterval(()=>{
-        status.innerText=msgs[i%msgs.length];
-        i++;
-    },1000);
+    const anim =
+        setInterval(() => {
 
-    try{
+            status.innerText =
+                msgs[
+                    i %
+                    msgs.length
+                ];
 
-        const res=
-            await fetch("/api/analyze",{
-                method:"POST",
-                headers:{
-                    "Content-Type":"application/json"
-                },
-                body:JSON.stringify({
-                    input
-                })
-            });
+            i++;
 
-        const data=
+        },1000);
+
+    try {
+
+        const res =
+            await fetch(
+                "/api/analyze",
+                {
+                    method:"POST",
+
+                    headers:{
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify({
+
+                            input
+                        })
+                }
+            );
+
+        const data =
             await res.json();
 
         clearInterval(anim);
 
         document
-            .getElementById("overlay")
-            .style.display="none";
+            .getElementById(
+                "overlay"
+            )
+            .style.display =
+            "none";
 
         if(!res.ok){
+
             throw new Error(
+
                 data.error ||
+
                 "Analysis failed"
             );
         }
 
         render(data);
 
-    }catch(err){
+    } catch(err) {
 
         clearInterval(anim);
 
         document
-            .getElementById("overlay")
-            .style.display="none";
+            .getElementById(
+                "overlay"
+            )
+            .style.display =
+            "none";
 
         document
-            .getElementById("results")
-            .style.display="block";
+            .getElementById(
+                "results"
+            )
+            .style.display =
+            "block";
 
         document
-            .getElementById("error")
-            .innerText=err.message;
+            .getElementById(
+                "error"
+            )
+            .innerText =
+            err.message;
     }
 }
 
 function safeArray(v){
+
     return Array.isArray(v)
         ? v
         : [];
@@ -247,74 +347,110 @@ function safeArray(v){
 function render(data){
 
     document
-        .getElementById("results")
-        .style.display="block";
+        .getElementById(
+            "results"
+        )
+        .style.display =
+        "block";
 
     document
-        .getElementById("error")
-        .innerText="";
+        .getElementById(
+            "error"
+        )
+        .innerText =
+        "";
 
     document
-        .getElementById("score")
-        .innerText=data.noise_score ?? 0;
+        .getElementById(
+            "score"
+        )
+        .innerText =
+        data.noise_score ?? 0;
 
     document
-        .getElementById("triggers")
-        .innerText=
-            safeArray(
-                data.emotional_triggers
-            ).join(", ");
+        .getElementById(
+            "confidence"
+        )
+        .innerText =
+        data.confidence ?? 0;
 
     document
-        .getElementById("summary")
-        .innerText=
-            data.logic_breakdown?.summary
-            || "";
+        .getElementById(
+            "sourceType"
+        )
+        .innerText =
+        data.source_type ||
+        "unknown";
 
-    const obs=
+    document
+        .getElementById(
+            "triggers"
+        )
+        .innerText =
+        safeArray(
+            data.emotional_triggers
+        ).join(", ");
+
+    document
+        .getElementById(
+            "summary"
+        )
+        .innerText =
+        data.logic_breakdown
+            ?.summary ||
+        "";
+
+    const obs =
         document.getElementById(
             "observations"
         );
 
-    obs.innerHTML="";
+    obs.innerHTML = "";
 
     safeArray(
         data.logic_breakdown
-        ?.key_observations
-    ).forEach(x=>{
+            ?.key_observations
+    ).forEach(x => {
 
-        const li=
-            document.createElement("li");
+        const li =
+            document.createElement(
+                "li"
+            );
 
-        li.textContent=x;
+        li.textContent = x;
 
         obs.appendChild(li);
     });
 
-    const fr=
+    const fr =
         document.getElementById(
             "framing"
         );
 
-    fr.innerHTML="";
+    fr.innerHTML = "";
 
     safeArray(
         data.logic_breakdown
-        ?.framing_notes
-    ).forEach(x=>{
+            ?.framing_notes
+    ).forEach(x => {
 
-        const li=
-            document.createElement("li");
+        const li =
+            document.createElement(
+                "li"
+            );
 
-        li.textContent=x;
+        li.textContent = x;
 
         fr.appendChild(li);
     });
 
     document
-        .getElementById("node")
-        .innerText=
-            data.node || "unknown";
+        .getElementById(
+            "node"
+        )
+        .innerText =
+        data.node ||
+        "unknown";
 }
 
 </script>
