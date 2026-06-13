@@ -251,51 +251,48 @@ function safeParse(content) {
 
 try {
 
-    const response =
-        await fetch(
-            provider.url,
-            {
-                method:
-                    "POST",
+    const response = await fetch(provider.url, {
+    method: "POST",
+    headers: provider.headers,
+    body: JSON.stringify({
+        model: provider.model,
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+        messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: text }
+        ]
+    })
+});
 
-                headers:
-                    provider.headers,
+// ALWAYS read as text first
+const raw = await response.text();
 
-                body:
-                    JSON.stringify({
+if (!response.ok) {
+    return res.status(500).json({
+        error: "Model request failed",
+        details: raw?.slice(0, 500)
+    });
+}
 
-                        model:
-                            provider.model,
+let api;
+try {
+    api = JSON.parse(raw);
+} catch (e) {
+    return res.status(500).json({
+        error: "Invalid JSON from provider",
+        details: raw?.slice(0, 500)
+    });
+}
 
-                        temperature:
-                            0.2,
+const content = api?.choices?.[0]?.message?.content;
 
-                        response_format: {
-                            type:
-                                "json_object"
-                        },
-
-                        messages: [
-
-                            {
-                                role:
-                                    "system",
-
-                                content:
-                                    SYSTEM_PROMPT
-                            },
-
-                            {
-                                role:
-                                    "user",
-
-                                content:
-                                    text
-                            }
-                        ]
-                    })
-            }
-        );
+if (!content) {
+    return res.status(500).json({
+        error: "Empty model response",
+        raw: api
+    });
+}
 
     const raw =
         await response.text();
