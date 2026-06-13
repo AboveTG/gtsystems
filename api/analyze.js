@@ -20,6 +20,10 @@ if (!input) {
     });
 }
 
+// =====================================
+// INPUT DETECTION
+// =====================================
+
 function isYouTubeUrl(str) {
 
     try {
@@ -55,6 +59,10 @@ function extractVideoId(url) {
     }
 }
 
+// =====================================
+// TRANSCRIPT EXTRACTION
+// =====================================
+
 async function fetchTranscript(videoUrl) {
 
     const mod =
@@ -73,8 +81,9 @@ async function fetchTranscript(videoUrl) {
     }
 
     const transcript =
-        await YoutubeTranscript
-            .fetchTranscript(videoId);
+        await YoutubeTranscript.fetchTranscript(
+            videoId
+        );
 
     return transcript
         .map(x => x.text)
@@ -114,8 +123,8 @@ if (isYouTubeUrl(input)) {
                     "Transcript unavailable for this video.",
 
                 key_observations: [
-                    "Video detected",
-                    "Transcript unavailable"
+                    "Video detected successfully",
+                    "Transcript extraction failed"
                 ],
 
                 framing_notes: [
@@ -131,6 +140,10 @@ if (isYouTubeUrl(input)) {
         });
     }
 }
+
+// =====================================
+// GROQ CONFIG
+// =====================================
 
 const provider = {
 
@@ -155,7 +168,11 @@ const provider = {
 const SYSTEM_PROMPT = `
 ```
 
+You are a linguistic analysis engine.
+
 Analyze linguistic structure only.
+
+Do NOT determine factual truth.
 
 Evaluate:
 
@@ -166,12 +183,11 @@ Evaluate:
 * urgency cues
 * attribution patterns
 * narrative framing
+* selective framing
 * certainty language
 * ambiguity language
 
-Do not determine factual truth.
-
-Return ONLY JSON.
+Return ONLY valid JSON.
 
 {
 "noise_score": number,
@@ -186,7 +202,14 @@ Return ONLY JSON.
 `;
 
 ````
+// =====================================
+// SAFE PARSER
+// =====================================
+
 function safeParse(content) {
+
+    if (!content)
+        return null;
 
     try {
 
@@ -222,13 +245,18 @@ function safeParse(content) {
     }
 }
 
+// =====================================
+// ANALYSIS
+// =====================================
+
 try {
 
     const response =
         await fetch(
             provider.url,
             {
-                method: "POST",
+                method:
+                    "POST",
 
                 headers:
                     provider.headers,
@@ -248,6 +276,7 @@ try {
                         },
 
                         messages: [
+
                             {
                                 role:
                                     "system",
@@ -255,6 +284,7 @@ try {
                                 content:
                                     SYSTEM_PROMPT
                             },
+
                             {
                                 role:
                                     "user",
