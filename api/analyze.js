@@ -1,196 +1,346 @@
 export default async function handler(req, res) {
-    if (req.method !== "POST") {
-        return res.status(405).json({ error: "Method not allowed" });
+
+```
+if (req.method !== "POST") {
+    return res.status(405).json({
+        error: "Method not allowed"
+    });
+}
+
+const body = req.body || {};
+
+const input =
+    typeof body.input === "string"
+        ? body.input.trim()
+        : "";
+
+if (!input) {
+    return res.status(400).json({
+        error: "No input provided"
+    });
+}
+
+function isYouTubeUrl(str) {
+
+    try {
+
+        const url = new URL(str);
+
+        return (
+            url.hostname.includes("youtube.com") ||
+            url.hostname.includes("youtu.be")
+        );
+
+    } catch {
+
+        return false;
     }
+}
 
-    const body = req.body || {};
+function extractVideoId(url) {
 
-    const input =
-        typeof body.input === "string"
-            ? body.input
-            : typeof body.text === "string"
-                ? body.text
-                : null;
+    try {
 
-    if (!input) {
-        return res.status(400).json({ error: "No input provided" });
-    }
+        const u = new URL(url);
 
-    // -----------------------------
-    // Detect YouTube URL
-    // -----------------------------
-    function isYouTubeUrl(str) {
-        try {
-            const url = new URL(str);
-            return (
-                url.hostname.includes("youtube.com") ||
-                url.hostname.includes("youtu.be")
-            );
-        } catch {
-            return false;
+        if (u.hostname.includes("youtu.be")) {
+            return u.pathname.slice(1);
         }
+
+        return u.searchParams.get("v");
+
+    } catch {
+
+        return null;
+    }
+}
+
+async function fetchTranscript(videoUrl) {
+
+    const mod =
+        await import("youtube-transcript");
+
+    const YoutubeTranscript =
+        mod.YoutubeTranscript;
+
+    const videoId =
+        extractVideoId(videoUrl);
+
+    if (!videoId) {
+        throw new Error(
+            "Invalid YouTube URL"
+        );
     }
 
-    function extractVideoId(url) {
-        try {
-            const u = new URL(url);
+    const transcript =
+        await YoutubeTranscript
+            .fetchTranscript(videoId);
 
-            if (u.hostname.includes("youtu.be")) {
-                return u.pathname.slice(1);
-            }
+    return transcript
+        .map(x => x.text)
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
 
-            return u.searchParams.get("v");
-        } catch {
-            return null;
-        }
+let text = input;
+
+let sourceType =
+    "article";
+
+if (isYouTubeUrl(input)) {
+
+    sourceType =
+        "youtube";
+
+    try {
+
+        text =
+            await fetchTranscript(input);
+
+    } catch (err) {
+
+        return res.status(200).json({
+
+            noise_score: 0,
+
+            confidence: 0,
+
+            emotional_triggers: [],
+
+            logic_breakdown: {
+
+                summary:
+                    "Transcript unavailable for this video.",
+
+                key_observations: [
+                    "Video detected",
+                    "Transcript unavailable"
+                ],
+
+                framing_notes: [
+                    err.message
+                ]
+            },
+
+            source_type:
+                sourceType,
+
+            node:
+                "TRANSCRIPT"
+        });
     }
+}
 
-    // -----------------------------
-    // Transcript (SAFE IMPORT)
-    // -----------------------------
-    async function fetchTranscript(videoUrl) {
-        try {
-            const mod = await import("youtube-transcript");
-            const YoutubeTranscript = mod.YoutubeTranscript;
+const provider = {
 
-            const videoId = extractVideoId(videoUrl);
-            if (!videoId) throw new Error("Invalid YouTube URL");
+    name: "GROQ",
 
-            const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+    url:
+        "https://api.groq.com/openai/v1/chat/completions",
 
-            return transcript
-                .map(t => t.text)
-                .join(" ")
-                .replace(/\s+/g, " ")
-                .trim();
+    headers: {
 
-        } catch (err) {
-            throw new Error("Transcript extraction failed: " + err.message);
-        }
-    }
+        Authorization:
+            `Bearer ${process.env.GROQ_API_KEY}`,
 
-    // -----------------------------
-    // Normalize input → text
-    // -----------------------------
-    let text = input;
+        "Content-Type":
+            "application/json"
+    },
 
-    if (isYouTubeUrl(input)) {
-        try {
-            text = await fetchTranscript(input);
-        } catch (err) {
-            return res.status(500).json({
-                error: err.message
-            });
-        }
-    }
+    model:
+        "llama-3.3-70b-versatile"
+};
 
-    // -----------------------------
-    // GROQ CONFIG
-    // -----------------------------
-    const provider = {
-        name: "GROQ",
-        url: "https://api.groq.com/openai/v1/chat/completions",
-        headers: {
-            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-            "Content-Type": "application/json"
-        },
-        model: "llama-3.3-70b-versatile"
-    };
+const SYSTEM_PROMPT = `
+```
 
-    const SYSTEM_PROMPT = `
-You are a linguistic analysis engine.
+Analyze linguistic structure only.
 
-Analyze ONLY language structure.
+Evaluate:
 
-Return ONLY JSON:
+* persuasion techniques
+* emotional language
+* authority appeals
+* fear appeals
+* urgency cues
+* attribution patterns
+* narrative framing
+* certainty language
+* ambiguity language
+
+Do not determine factual truth.
+
+Return ONLY JSON.
 
 {
-  "noise_score": number,
-  "emotional_triggers": string[],
-  "logic_breakdown": {
-    "summary": string,
-    "key_observations": string[],
-    "framing_notes": string[]
-  }
+"noise_score": number,
+"confidence": number,
+"emotional_triggers": string[],
+"logic_breakdown": {
+"summary": string,
+"key_observations": string[],
+"framing_notes": string[]
+}
 }
 `;
 
-    // -----------------------------
-    // Safe JSON parser
-    // -----------------------------
-    function safeParse(content) {
-        if (!content) return null;
+````
+function safeParse(content) {
 
-        try {
-            const cleaned = content
+    try {
+
+        const cleaned =
+            content
                 .replace(/```json/g, "")
                 .replace(/```/g, "")
                 .trim();
 
-            const start = cleaned.indexOf("{");
-            const end = cleaned.lastIndexOf("}");
+        const start =
+            cleaned.indexOf("{");
 
-            if (start === -1 || end === -1) return null;
+        const end =
+            cleaned.lastIndexOf("}");
 
-            return JSON.parse(cleaned.slice(start, end + 1));
-        } catch {
+        if (
+            start === -1 ||
+            end === -1
+        ) {
             return null;
         }
+
+        return JSON.parse(
+            cleaned.slice(
+                start,
+                end + 1
+            )
+        );
+
+    } catch {
+
+        return null;
+    }
+}
+
+try {
+
+    const response =
+        await fetch(
+            provider.url,
+            {
+                method: "POST",
+
+                headers:
+                    provider.headers,
+
+                body:
+                    JSON.stringify({
+
+                        model:
+                            provider.model,
+
+                        temperature:
+                            0.2,
+
+                        response_format: {
+                            type:
+                                "json_object"
+                        },
+
+                        messages: [
+                            {
+                                role:
+                                    "system",
+
+                                content:
+                                    SYSTEM_PROMPT
+                            },
+                            {
+                                role:
+                                    "user",
+
+                                content:
+                                    text
+                            }
+                        ]
+                    })
+            }
+        );
+
+    const raw =
+        await response.text();
+
+    if (!response.ok) {
+
+        return res.status(500).json({
+
+            error:
+                "Model error",
+
+            details:
+                raw
+        });
     }
 
-    // -----------------------------
-    // Call model
-    // -----------------------------
-    try {
-        const response = await fetch(provider.url, {
-            method: "POST",
-            headers: provider.headers,
-            body: JSON.stringify({
-                model: provider.model,
-                temperature: 0.2,
-                response_format: { type: "json_object" },
-                messages: [
-                    { role: "system", content: SYSTEM_PROMPT },
-                    { role: "user", content: text }
-                ]
-            })
+    const api =
+        JSON.parse(raw);
+
+    const content =
+        api?.choices?.[0]
+            ?.message?.content;
+
+    const parsed =
+        safeParse(content);
+
+    if (!parsed) {
+
+        return res.status(500).json({
+
+            error:
+                "Invalid model output",
+
+            raw:
+                content
         });
+    }
 
-        const raw = await response.text();
+    return res.status(200).json({
 
-        if (!response.ok) {
-            return res.status(500).json({
-                error: "Model error",
-                details: raw
-            });
-        }
+        noise_score:
+            parsed.noise_score ?? 0,
 
-        const api = JSON.parse(raw);
-        const content = api?.choices?.[0]?.message?.content;
+        confidence:
+            parsed.confidence ?? 0,
 
-        const parsed = safeParse(content);
+        emotional_triggers:
+            parsed.emotional_triggers ?? [],
 
-        if (!parsed) {
-            return res.status(500).json({
-                error: "Invalid model output",
-                raw: content
-            });
-        }
+        logic_breakdown:
+            parsed.logic_breakdown ?? {
 
-        return res.status(200).json({
-            noise_score: parsed.noise_score ?? 0,
-            emotional_triggers: parsed.emotional_triggers ?? [],
-            logic_breakdown: parsed.logic_breakdown ?? {
-                summary: "Analysis complete.",
+                summary:
+                    "Analysis complete.",
+
                 key_observations: [],
+
                 framing_notes: []
             },
-            node: provider.name
-        });
 
-    } catch (err) {
-        return res.status(500).json({
-            error: err.message
-        });
-    }
+        source_type:
+            sourceType,
+
+        node:
+            provider.name
+    });
+
+} catch (err) {
+
+    return res.status(500).json({
+
+        error:
+            err.message
+    });
+}
+````
+
 }
