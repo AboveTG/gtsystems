@@ -1,109 +1,151 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>GT Systems</title>
 
 <style>
+:root {
+    --bg:#0a0a0a;
+    --text:#e0e0e0;
+    --accent:#00ff41;
+    --warn:#ffcc00;
+    --bad:#ff4d4d;
+}
+
 body {
-    background:#0a0a0a;
-    color:#e0e0e0;
+    background:var(--bg);
+    color:var(--text);
     font-family:monospace;
     display:flex;
     justify-content:center;
-    align-items:center;
-    min-height:100vh;
-    margin:0;
-    padding:20px;
+    padding:30px;
 }
 
 .container { width:100%; max-width:900px; }
 
-h1 { text-align:center; color:#00ff41; }
+h1 { text-align:center; color:var(--accent); }
 
 textarea {
     width:100%;
-    height:220px;
+    height:180px;
     background:#000;
-    color:#00ff41;
+    color:var(--accent);
     border:1px solid #333;
     padding:12px;
 }
 
 button {
     width:100%;
-    padding:15px;
-    background:#00ff41;
+    padding:14px;
+    background:var(--accent);
     border:none;
     font-weight:bold;
     cursor:pointer;
+    margin-top:10px;
 }
 
-#results { display:none; margin-top:20px; background:#111; padding:15px; }
+.panel {
+    margin-top:20px;
+    background:#111;
+    padding:15px;
+    border:1px solid #333;
+}
 
-.error { color:red; }
+.badge {
+    display:inline-block;
+    padding:4px 8px;
+    margin:5px 0;
+}
+
+.good { color:var(--accent); }
+.warn { color:var(--warn); }
+.bad { color:var(--bad); }
+
+ul { padding-left:20px; }
+
+.small { color:#888; font-size:0.9rem; }
 </style>
 </head>
 
 <body>
 
 <div class="container">
+
 <h1>GT SYSTEMS</h1>
 
-<textarea id="input" placeholder="Paste text OR YouTube URL"></textarea>
+<textarea id="input" placeholder="Paste text or YouTube URL..."></textarea>
 
 <button onclick="run()">ANALYZE</button>
 
-<div id="results">
-    <div class="error" id="error"></div>
+<div id="output" class="panel" style="display:none">
 
-    <p>Score: <span id="score">-</span></p>
-    <p>Confidence: <span id="confidence">-</span></p>
-    <p>Source: <span id="sourceType">-</span></p>
+    <div id="signal"></div>
 
-    <p>Triggers: <span id="triggers"></span></p>
-    <p>Summary: <span id="summary"></span></p>
+    <div class="small" id="node"></div>
 
-    <ul id="observations"></ul>
-    <ul id="framing"></ul>
+    <hr>
 
-    <p>Node: <span id="node"></span></p>
+    <div><b>Score:</b> <span id="score"></span></div>
+    <div><b>Confidence:</b> <span id="confidence"></span></div>
+    <div><b>Source:</b> <span id="source"></span></div>
+
+    <div><b>Triggers:</b> <span id="triggers"></span></div>
+
+    <div><b>Summary:</b></div>
+    <div id="summary"></div>
+
+    <div><b>Observations:</b></div>
+    <ul id="obs"></ul>
+
+    <div><b>Framing:</b></div>
+    <ul id="frame"></ul>
+
 </div>
+
 </div>
 
 <script>
+
 async function run() {
+
     const input = document.getElementById("input").value.trim();
-    if (!input) return alert("Input required");
+    if (!input) return;
 
     const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
         body: JSON.stringify({ input })
     });
 
-    let data;
-    try {
-        data = await res.json();
-    } catch {
-        const text = await res.text();
-        document.getElementById("error").innerText =
-            "Server returned non-JSON response:\n" + text;
-        return;
-    }
+    const data = await res.json();
 
-    document.getElementById("results").style.display = "block";
+    document.getElementById("output").style.display = "block";
 
-    if (!res.ok) {
-        document.getElementById("error").innerText = data.error || "Request failed";
-        return;
-    }
+    const signalMap = {
+        0: ["NO SIGNAL", "bad"],
+        1: ["METADATA ONLY", "warn"],
+        2: ["PARTIAL SIGNAL", "warn"],
+        3: ["FULL SIGNAL", "good"]
+    };
 
-    document.getElementById("error").innerText = "";
-    document.getElementById("score").innerText = data.noise_score ?? 0;
-    document.getElementById("confidence").innerText = data.confidence ?? 0;
-    document.getElementById("sourceType").innerText = data.source_type ?? "unknown";
+    const [label, cls] = signalMap[data.signal_level || 0];
+
+    document.getElementById("signal").innerHTML =
+        `<span class="${cls}">${label}</span>`;
+
+    document.getElementById("node").innerText =
+        "Node: " + data.node;
+
+    document.getElementById("score").innerText =
+        data.noise_score ?? "N/A";
+
+    document.getElementById("confidence").innerText =
+        data.confidence ?? 0;
+
+    document.getElementById("source").innerText =
+        data.source_type;
 
     document.getElementById("triggers").innerText =
         (data.emotional_triggers || []).join(", ");
@@ -111,7 +153,7 @@ async function run() {
     document.getElementById("summary").innerText =
         data.logic_breakdown?.summary || "";
 
-    const obs = document.getElementById("observations");
+    const obs = document.getElementById("obs");
     obs.innerHTML = "";
     (data.logic_breakdown?.key_observations || []).forEach(x => {
         const li = document.createElement("li");
@@ -119,16 +161,15 @@ async function run() {
         obs.appendChild(li);
     });
 
-    const fr = document.getElementById("framing");
+    const fr = document.getElementById("frame");
     fr.innerHTML = "";
     (data.logic_breakdown?.framing_notes || []).forEach(x => {
         const li = document.createElement("li");
         li.textContent = x;
         fr.appendChild(li);
     });
-
-    document.getElementById("node").innerText = data.node || "unknown";
 }
+
 </script>
 
 </body>
