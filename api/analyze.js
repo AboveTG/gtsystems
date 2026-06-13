@@ -14,9 +14,23 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "No input provided" });
     }
 
-    // =========================
-    // DETECTION
-    // =========================
+    // =====================================================
+    // PROVIDER (MUST BE DEFINED FIRST - FIXES YOUR ERROR)
+    // =====================================================
+
+    const provider = {
+        name: "GROQ",
+        url: "https://api.groq.com/openai/v1/chat/completions",
+        headers: {
+            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+            "Content-Type": "application/json"
+        },
+        model: "llama-3.3-70b-versatile"
+    };
+
+    // =====================================================
+    // HELPERS
+    // =====================================================
 
     function isYouTubeUrl(str) {
         try {
@@ -40,197 +54,70 @@ export default async function handler(req, res) {
         }
     }
 
-    // =========================
-    // LAYERS
-    // =========================
+    // =====================================================
+    // YOUTUBE INGESTION (SAFE LAYERED FALLBACK)
+    // =====================================================
 
-    async function layer1(id) {
+    async function fetchTranscript(videoId) {
         try {
             const mod = await import("youtube-transcript");
             const yt = mod.YoutubeTranscript;
 
-            const t = await yt.fetchTranscript(id);
+            const t = await yt.fetchTranscript(videoId);
+
             return t.map(x => x.text).join(" ").replace(/\s+/g, " ").trim();
         } catch {
             return null;
         }
     }
 
-    async function layer2(id) {
-        try {
-            const { Innertube } = await import("youtubei.js");
-
-            const yt = await Innertube.create();
-            const info = await yt.getInfo(id);
-            const captions = await info.getTranscript();
-
-            const seg = captions?.transcript?.content?.body?.initial_segments;
-            if (!seg) return null;
-
-            return seg.map(s => s.snippet?.text || "").join(" ");
-        } catch {
-            return null;
-        }
-    }
-
-    async function layer3(url, id) {
-        try {
-            const r = await fetch(
-                `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`
-            );
-            const d = await r.json();
-
-            return `
-[METADATA MODE - NO INFERENCE]
-
-TITLE: ${d?.title || "unknown"}
-CHANNEL: ${d?.author_name || "unknown"}
-VIDEO_ID: ${id}
-
-RULE: Do not infer meaning or topic.
-            `.trim();
-        } catch {
-            return `
-[MINIMAL MODE]
-
-VIDEO_ID: ${id}
-            `.trim();
-        }
-    }
-
-    // =========================
-    // INGESTION
-    // =========================
+    // =====================================================
+    // INGESTION PIPELINE
+    // =====================================================
 
     let text = input;
     let source_type = "text";
+    let videoId = null;
 
     if (isYouTubeUrl(input)) {
         source_type = "youtube";
+        videoId = extractVideoId(input);
 
-        const id = extractVideoId(input);
+        let transcript = null;
 
-        text =
-            await layer1(id) ||
-            await layer2(id) ||
-            await layer3(input, id);
+        if (videoId) {
+            transcript = await fetchTranscript(videoId);
+        }
+
+        if (transcript) {
+            text = transcript;
+        } else {
+            // HARD FALLBACK (metadata-only safe mode)
+            text = `[METADATA ONLY MODE]
+VIDEO_ID: ${videoId || "unknown"}
+SOURCE: youtube`;
+        }
     }
 
-    // =========================
+    // =====================================================
     // SIGNAL CLASSIFIER
-    // =========================
+    // =====================================================
 
     function detectSignalLevel(t, type) {
         if (!t || t.length < 60) return 0;
 
-        if (type === "youtube") {
-            if (t.includes("[METADATA MODE")) return 1;
-            if (t.length < 300) return 2;
-            return 3;
-        }
-
-        return t.length > 800 ? 3 : 2;
-    }
-
-    const signal_level = detectSignalLevel(text, source_type);
-
-    // =========================
-    // GROQ
-    // =========================
-
-    export default async function handler(req, res) {
-
-    if (req.method !== "POST") {
-        return res.status(405).json({ error: "Method not allowed" });
-    }
-
-    const body = req.body || {};
-
-    const input =
-        typeof body.input === "string" ? body.input.trim()
-        : typeof body.text === "string" ? body.text.trim()
-        : null;
-
-    if (!input) {
-        return res.status(400).json({ error: "No input provided" });
-    }
-
-    // =========================
-    // PROVIDER (MUST BE FIRST)
-    // =========================
-
-    const provider = {
-        name: "GROQ",
-        url: "https://api.groq.com/openai/v1/chat/completions",
-        headers: {
-            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-            "Content-Type": "application/json"
-        },
-        model: "llama-3.3-70b-versatile"
-    };
-
-    // =========================
-    // INGESTION LOGIC
-    // =========================
-
-    function isYouTubeUrl(str) {
-        try {
-            const u = new URL(str);
-            return u.hostname.includes("youtube.com") || u.hostname.includes("youtu.be");
-        } catch {
-            return false;
-        }
-    }
-
-    function extractVideoId(url) {
-        try {
-            const u = new URL(url);
-            if (u.hostname.includes("youtu.be")) return u.pathname.slice(1);
-            return u.searchParams.get("v");
-        } catch {
-            return null;
-        }
-    }
-
-    let text = input;
-    let source_type = "text";
-
-    if (isYouTubeUrl(input)) {
-        source_type = "youtube";
-
-        const id = extractVideoId(input);
-
-        try {
-            const mod = await import("youtube-transcript");
-            const yt = mod.YoutubeTranscript;
-
-            const t = await yt.fetchTranscript(id);
-
-            text = t.map(x => x.text).join(" ");
-        } catch {
-            text = `
-[METADATA ONLY MODE]
-VIDEO_ID: ${id}
-            `.trim();
-        }
-    }
-
-    // =========================
-    // SIGNAL LEVEL
-    // =========================
-
-    function detectSignalLevel(t, type) {
-        if (!t || t.length < 60) return 0;
         if (type === "youtube" && t.includes("METADATA ONLY")) return 1;
+
         if (t.length < 300) return 2;
+
         return 3;
     }
 
     const signal_level = detectSignalLevel(text, source_type);
 
-    // =========================
+    // =====================================================
     // HARD GATE (CRITICAL FIX)
-    // =========================
+    // =====================================================
 
     if (signal_level === 1) {
         return res.status(200).json({
@@ -239,13 +126,13 @@ VIDEO_ID: ${id}
             signal_level: 1,
             emotional_triggers: [],
             logic_breakdown: {
-                summary: "Metadata-only input. Model skipped.",
+                summary: "Metadata-only input. No linguistic analysis performed.",
                 key_observations: [
-                    "No transcript available",
-                    "No linguistic body present"
+                    "Transcript unavailable or disabled",
+                    "Only metadata present"
                 ],
                 framing_notes: [
-                    "Execution halted at signal gate"
+                    "LLM execution skipped due to insufficient signal"
                 ]
             },
             source_type,
@@ -253,30 +140,15 @@ VIDEO_ID: ${id}
         });
     }
 
-    // =========================
-    // CONTINUE MODEL CALL ONLY IF SIGNAL IS VALID
-    // =========================
-
-    // (rest of GROQ call goes here)
-}
-        const provider = {
-        name: "GROQ",
-        url: "https://api.groq.com/openai/v1/chat/completions",
-        headers: {
-            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-            "Content-Type": "application/json"
-        },
-        model: "llama-3.3-70b-versatile"
-    };
+    // =====================================================
+    // GROQ ANALYSIS PROMPT
+    // =====================================================
 
     const SYSTEM_PROMPT = `
-You are a STRICT linguistic feature extractor.
+You are a strict linguistic feature extractor.
 
-RULES:
-- Use ONLY provided text.
-- Do NOT infer meaning or topic.
-- Do NOT guess context.
-- Only analyze explicit language features.
+Only analyze explicit text.
+Do NOT infer missing context.
 
 Return ONLY JSON:
 
@@ -292,14 +164,16 @@ Return ONLY JSON:
 }
 `;
 
-    function safeParse(c) {
-        if (!c) return null;
+    function safeParse(content) {
+        if (!content) return null;
+
         try {
-            const cleaned = c.replace(/```json/g, "").replace(/```/g, "");
-            const s = cleaned.indexOf("{");
-            const e = cleaned.lastIndexOf("}");
-            if (s === -1 || e === -1) return null;
-            return JSON.parse(cleaned.slice(s, e + 1));
+            const cleaned = content.replace(/```json/g, "").replace(/```/g, "");
+            const start = cleaned.indexOf("{");
+            const end = cleaned.lastIndexOf("}");
+            if (start === -1 || end === -1) return null;
+
+            return JSON.parse(cleaned.slice(start, end + 1));
         } catch {
             return null;
         }
@@ -307,16 +181,16 @@ Return ONLY JSON:
 
     function clean(arr = []) {
         return [...new Set(arr)]
-            .map(x => x.toLowerCase().trim())
-            .filter(x => x.length > 2);
+            .map(x => String(x).toLowerCase().trim())
+            .filter(Boolean);
     }
 
-    // =========================
-    // MODEL CALL
-    // =========================
+    // =====================================================
+    // MODEL CALL (ONLY FOR SIGNAL 2+)
+    // =====================================================
 
     try {
-        const r = await fetch(provider.url, {
+        const response = await fetch(provider.url, {
             method: "POST",
             headers: provider.headers,
             body: JSON.stringify({
@@ -330,12 +204,12 @@ Return ONLY JSON:
             })
         });
 
-        const raw = await r.text();
+        const raw = await response.text();
 
-        if (!r.ok) {
+        if (!response.ok) {
             return res.status(500).json({
                 error: "Model request failed",
-                details: raw?.slice(0, 400)
+                details: raw.slice(0, 500)
             });
         }
 
@@ -351,38 +225,22 @@ Return ONLY JSON:
         }
 
         return res.status(200).json({
-            noise_score:
-                signal_level === 1 ? null : parsed.noise_score ?? 0,
-
-            confidence:
-                signal_level === 1 ? 0 : parsed.confidence ?? 0,
-
+            noise_score: parsed.noise_score ?? 0,
+            confidence: parsed.confidence ?? 0,
             signal_level,
-
             emotional_triggers: clean(parsed.emotional_triggers),
-
             logic_breakdown: {
-                summary:
-                    signal_level === 1
-                        ? "Insufficient signal (metadata-only input)."
-                        : parsed.logic_breakdown?.summary,
-
-                key_observations:
-                    signal_level === 1
-                        ? ["No transcript or linguistic body available"]
-                        : parsed.logic_breakdown?.key_observations || [],
-
-                framing_notes:
-                    signal_level === 1
-                        ? ["Scoring disabled due to low signal"]
-                        : parsed.logic_breakdown?.framing_notes || []
+                summary: parsed.logic_breakdown?.summary || "",
+                key_observations: parsed.logic_breakdown?.key_observations || [],
+                framing_notes: parsed.logic_breakdown?.framing_notes || []
             },
-
             source_type,
             node: provider.name
         });
 
-    } catch (e) {
-        return res.status(500).json({ error: e.message });
+    } catch (err) {
+        return res.status(500).json({
+            error: err.message
+        });
     }
 }
