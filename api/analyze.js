@@ -14,9 +14,10 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "No input provided" });
     }
 
-    // -----------------------------
-    // Detect YouTube URL
-    // -----------------------------
+    // =====================================================
+    // DETECTION
+    // =====================================================
+
     function isYouTubeUrl(str) {
         try {
             const u = new URL(str);
@@ -32,39 +33,89 @@ export default async function handler(req, res) {
     function extractVideoId(url) {
         try {
             const u = new URL(url);
-            if (u.hostname.includes("youtu.be")) {
-                return u.pathname.slice(1);
-            }
+            if (u.hostname.includes("youtu.be")) return u.pathname.slice(1);
             return u.searchParams.get("v");
         } catch {
             return null;
         }
     }
 
-    // -----------------------------
-    // Transcript extraction (SAFE)
-    // -----------------------------
-    async function fetchTranscript(videoUrl) {
+    // =====================================================
+    // LAYER 1 — youtube-transcript
+    // =====================================================
+    async function layer1_transcript(videoId) {
         try {
             const mod = await import("youtube-transcript");
-            const YoutubeTranscript = mod.YoutubeTranscript;
+            const yt = mod.YoutubeTranscript;
 
-            const videoId = extractVideoId(videoUrl);
-            if (!videoId) throw new Error("Invalid YouTube URL");
+            const t = await yt.fetchTranscript(videoId);
 
-            const transcript = await YoutubeTranscript.fetchTranscript(videoId);
-
-            return transcript
-                .map(t => t.text)
-                .join(" ")
-                .replace(/\s+/g, " ")
-                .trim();
-
+            return t.map(x => x.text).join(" ").replace(/\s+/g, " ").trim();
         } catch {
-            // HARD FALLBACK (critical fix)
             return null;
         }
     }
+
+    // =====================================================
+    // LAYER 2 — youtubei.js captions (robust fallback)
+    // =====================================================
+    async function layer2_youtubei(videoId) {
+        try {
+            const { Innertube } = await import("youtubei.js");
+
+            const yt = await Innertube.create();
+
+            const info = await yt.getInfo(videoId);
+            const captions = await info.getTranscript();
+
+            if (!captions?.transcript?.content?.body?.initial_segments) {
+                return null;
+            }
+
+            return captions.transcript.content.body.initial_segments
+                .map(s => s.snippet?.text || "")
+                .join(" ")
+                .replace(/\s+/g, " ")
+                .trim();
+        } catch {
+            return null;
+        }
+    }
+
+    // =====================================================
+    // LAYER 3 — GUARANTEED METADATA FALLBACK
+    // =====================================================
+    async function layer3_metadata(videoUrl, videoId) {
+        try {
+            const oembedUrl =
+                `https://www.youtube.com/oembed?url=${encodeURIComponent(videoUrl)}&format=json`;
+
+            const res = await fetch(oembedUrl);
+            const data = await res.json();
+
+            const title = data?.title || "";
+            const author = data?.author_name || "";
+
+            return `
+YouTube Video Metadata Fallback:
+Title: ${title}
+Channel: ${author}
+Video ID: ${videoId}
+
+Note: Transcript unavailable. Analysis based on metadata only.
+            `.trim();
+        } catch {
+            return `
+YouTube Video:
+Video ID: ${videoId}
+Note: Full extraction failed; operating on minimal signal.
+            `.trim();
+        }
+    }
+
+    // =====================================================
+    // INGESTION PIPELINE
+    // =====================================================
 
     let text = input;
     let source_type = "text";
@@ -72,35 +123,20 @@ export default async function handler(req, res) {
     if (isYouTubeUrl(input)) {
         source_type = "youtube";
 
-        const transcript = await fetchTranscript(input);
+        const videoId = extractVideoId(input);
 
-        if (!transcript) {
-            return res.status(200).json({
-                noise_score: 0,
-                confidence: 0,
-                emotional_triggers: [],
-                logic_breakdown: {
-                    summary: "Transcript unavailable (disabled or blocked).",
-                    key_observations: [
-                        "YouTube URL detected",
-                        "Transcript extraction failed",
-                        "Fallback analysis only"
-                    ],
-                    framing_notes: [
-                        "No transcript data available"
-                    ]
-                },
-                source_type,
-                node: "FALLBACK"
-            });
-        }
+        let extracted =
+            await layer1_transcript(videoId) ||
+            await layer2_youtubei(videoId) ||
+            await layer3_metadata(input, videoId);
 
-        text = transcript;
+        text = extracted;
     }
 
-    // -----------------------------
+    // =====================================================
     // GROQ CONFIG
-    // -----------------------------
+    // =====================================================
+
     const provider = {
         name: "GROQ",
         url: "https://api.groq.com/openai/v1/chat/completions",
@@ -114,7 +150,7 @@ export default async function handler(req, res) {
     const SYSTEM_PROMPT = `
 You are a linguistic analysis engine.
 
-Return ONLY valid JSON:
+Return ONLY JSON:
 
 {
   "noise_score": number,
@@ -148,9 +184,10 @@ Return ONLY valid JSON:
         }
     }
 
-    // -----------------------------
-    // CALL MODEL
-    // -----------------------------
+    // =====================================================
+    // MODEL CALL
+    // =====================================================
+
     try {
         const response = await fetch(provider.url, {
             method: "POST",
