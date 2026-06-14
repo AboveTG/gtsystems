@@ -130,11 +130,20 @@ export default async function handler(req, res) {
     // =========================================
 
     function signalLevel(t) {
-        if (!t || t.length < 80) return 0;
-        if (t.includes("METADATA MODE")) return 1;
-        if (t.length < 500) return 2;
+
+    if (!t)
+        return 0;
+
+    if (
+        t.includes("metadata-derived source")
+    )
+        return 2;
+
+    if (t.length < 500)
         return 3;
-    }
+
+    return 4;
+}
 
     const signal_level = signalLevel(text);
 
@@ -143,16 +152,25 @@ export default async function handler(req, res) {
     // =========================================
 
     const SYSTEM_PROMPT = `
-You are a universal linguistic signal analyzer.
+You are a universal content-analysis engine.
 
-You analyze:
-- text
-- scraped web content
+Input may be:
+
+- article text
+- social media posts
 - transcripts
-- social posts
-- metadata-derived pseudo-text
+- metadata-derived source descriptions
 
-Return ONLY JSON:
+Always analyze whatever signal exists.
+
+Never refuse analysis solely because a transcript is unavailable.
+
+When signal quality is limited:
+
+- lower confidence
+- explain limitations
+
+Return ONLY JSON.
 
 {
   "noise_score": number,
