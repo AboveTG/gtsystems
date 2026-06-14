@@ -105,31 +105,53 @@ export default async function handler(req, res) {
     let source_type = type;
 
     if (type === "youtube") {
-        const videoId = extractYouTubeId(input);
-        const transcript = videoId ? await tryTranscript(videoId) : null;
+    const videoId = extractYouTubeId(input);
+    const transcript = videoId ? await tryTranscript(videoId) : null;
 
-        if (transcript) {
-            text = transcript;
-        } else {
-            text = `
-[YOUTUBE METADATA MODE]
-Video ID: ${videoId || "unknown"}
+    let title = "";
+    let description = "";
 
-Transcript unavailable.
-Analyze only available metadata-level inference.
-            `.trim();
-        }
+    try {
+        const r = await fetch(`https://www.youtube.com/watch?v=${videoId}`);
+        const html = await r.text();
+
+        const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+        title = titleMatch?.[1]?.replace(" - YouTube", "") || "";
+
+        const descMatch = html.match(/"shortDescription":"(.*?)"/);
+        description = descMatch?.[1] || "";
+    } catch {}
+
+    if (transcript && transcript.length > 100) {
+        text = transcript;
+        signal_level = 4;
+    } else {
+        text = `
+[YOUTUBE SEMANTIC FUSION MODE]
+
+VIDEO_ID: ${videoId || "unknown"}
+
+TITLE:
+${title}
+
+DESCRIPTION:
+${description}
+
+TRANSCRIPT:
+Unavailable
+
+INSTRUCTION:
+Infer discourse, intent, and framing from available metadata.
+Construct plausible semantic structure WITHOUT hallucinating facts.
+
+OUTPUT SHOULD RELY ON:
+- title semantics
+- channel context (if derivable)
+- description framing
+`;
+        signal_level = 3;
     }
-
-    if (type === "url" || type === "tweet" || type === "tiktok") {
-        const preview = await fetchUrlPreview(input);
-
-        if (preview) {
-            text = preview;
-        } else {
-            text = `[UNREACHABLE SOURCE] ${input}`;
-        }
-    }
+}
 
     // =====================================================
     // SIGNAL SCORING
