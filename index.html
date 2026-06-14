@@ -1,7 +1,8 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8"/>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>GT Systems</title>
 
 <style>
@@ -16,22 +17,24 @@ body {
 
 .container { width:100%; max-width:900px; }
 
+h1 { color:#00ff41; text-align:center; }
+
 textarea {
     width:100%;
-    height:160px;
+    height:180px;
     background:#000;
     color:#00ff41;
     border:1px solid #333;
-    padding:10px;
+    padding:12px;
 }
 
 button {
     width:100%;
     padding:14px;
-    margin-top:10px;
     background:#00ff41;
     border:none;
     font-weight:bold;
+    cursor:pointer;
 }
 
 .panel {
@@ -41,56 +44,34 @@ button {
     border:1px solid #333;
 }
 
-.small { color:#888; font-size:12px; }
-
-.badge {
-    display:inline-block;
-    padding:3px 8px;
-    margin:4px 0;
-}
+.bad { color:#ff4d4d; }
+.warn { color:#ffcc00; }
+.good { color:#00ff41; }
 </style>
 </head>
 
 <body>
 
 <div class="container">
-
 <h1>GT SYSTEMS</h1>
 
-<div class="small">
-Universal ingestion engine (text • URL • YouTube • social)
-</div>
-
-<textarea id="input" placeholder="Paste anything..."></textarea>
-
+<textarea id="input" placeholder="Paste text / URL / YouTube / PDF / image"></textarea>
 <button onclick="run()">ANALYZE</button>
 
 <div id="out" class="panel" style="display:none">
-
-<div id="meta"></div>
-
-<div><b>Score:</b> <span id="score"></span></div>
-<div><b>Confidence:</b> <span id="conf"></span></div>
-<div><b>Source:</b> <span id="src"></span></div>
-
-<div><b>Triggers:</b> <span id="trig"></span></div>
-
-<hr/>
-
-<div id="summary"></div>
-
-<ul id="obs"></ul>
-<ul id="frame"></ul>
-
+    <div id="signal"></div>
+    <div>Node: <span id="node"></span></div>
+    <div>Score: <span id="score"></span></div>
+    <div>Confidence: <span id="conf"></span></div>
+    <div>Layers: <pre id="layers"></pre></div>
 </div>
 
 </div>
 
 <script>
-
-async function run() {
+async function run(){
     const input = document.getElementById("input").value.trim();
-    if (!input) return;
+    if(!input) return;
 
     const res = await fetch("/api/analyze", {
         method:"POST",
@@ -102,31 +83,11 @@ async function run() {
 
     document.getElementById("out").style.display = "block";
 
-    document.getElementById("score").innerText = data.noise_score ?? "N/A";
-    document.getElementById("conf").innerText = data.confidence ?? 0;
-    document.getElementById("src").innerText = data.source_type;
-    document.getElementById("trig").innerText = (data.emotional_triggers || []).join(", ");
-    document.getElementById("summary").innerText = data.logic_breakdown?.summary || "";
-
-    const obs = document.getElementById("obs");
-    const frame = document.getElementById("frame");
-
-    obs.innerHTML = "";
-    frame.innerHTML = "";
-
-    (data.logic_breakdown?.key_observations || []).forEach(x=>{
-        const li = document.createElement("li");
-        li.textContent = x;
-        obs.appendChild(li);
-    });
-
-    (data.logic_breakdown?.framing_notes || []).forEach(x=>{
-        const li = document.createElement("li");
-        li.textContent = x;
-        frame.appendChild(li);
-    });
+    document.getElementById("node").innerText = data.node;
+    document.getElementById("score").innerText = data.noise_score;
+    document.getElementById("conf").innerText = data.confidence;
+    document.getElementById("layers").innerText = JSON.stringify(data.layers, null, 2);
 }
-
 </script>
 
 </body>
