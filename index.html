@@ -1,51 +1,53 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8"/>
+<meta charset="utf-8"/>
 <title>GT Systems</title>
 
 <style>
-body{
+body {
     background:#0a0a0a;
     color:#e0e0e0;
     font-family:monospace;
     display:flex;
     justify-content:center;
-    padding:30px;
+    padding:40px;
 }
 
-.container{ width:100%; max-width:900px; }
+.container { width:100%; max-width:900px; }
 
-h1{ color:#00ff41; text-align:center; }
-
-textarea{
+textarea {
     width:100%;
-    height:180px;
+    height:160px;
     background:#000;
     color:#00ff41;
     border:1px solid #333;
-    padding:12px;
+    padding:10px;
 }
 
-button{
+button {
     width:100%;
     padding:14px;
+    margin-top:10px;
     background:#00ff41;
-    border:0;
+    border:none;
     font-weight:bold;
-    cursor:pointer;
 }
 
-.panel{
+.panel {
     margin-top:20px;
     background:#111;
     padding:15px;
     border:1px solid #333;
 }
 
-.good{ color:#00ff41; }
-.warn{ color:#ffcc00; }
-.bad{ color:#ff4d4d; }
+.small { color:#888; font-size:12px; }
+
+.badge {
+    display:inline-block;
+    padding:3px 8px;
+    margin:4px 0;
+}
 </style>
 </head>
 
@@ -55,30 +57,29 @@ button{
 
 <h1>GT SYSTEMS</h1>
 
-<textarea id="input" placeholder="Text or YouTube URL"></textarea>
+<div class="small">
+Universal ingestion engine (text • URL • YouTube • social)
+</div>
+
+<textarea id="input" placeholder="Paste anything..."></textarea>
 
 <button onclick="run()">ANALYZE</button>
 
-<div id="output" class="panel" style="display:none">
+<div id="out" class="panel" style="display:none">
 
-<div id="signal"></div>
-<div>Node: <span id="node"></span></div>
+<div id="meta"></div>
 
-<hr>
+<div><b>Score:</b> <span id="score"></span></div>
+<div><b>Confidence:</b> <span id="conf"></span></div>
+<div><b>Source:</b> <span id="src"></span></div>
 
-<div>Score: <span id="score"></span></div>
-<div>Confidence: <span id="confidence"></span></div>
-<div>Source: <span id="source"></span></div>
+<div><b>Triggers:</b> <span id="trig"></span></div>
 
-<div>Triggers: <span id="triggers"></span></div>
+<hr/>
 
-<div>Summary:</div>
 <div id="summary"></div>
 
-<div>Observations:</div>
 <ul id="obs"></ul>
-
-<div>Framing:</div>
 <ul id="frame"></ul>
 
 </div>
@@ -87,9 +88,9 @@ button{
 
 <script>
 
-async function run(){
+async function run() {
     const input = document.getElementById("input").value.trim();
-    if(!input) return;
+    if (!input) return;
 
     const res = await fetch("/api/analyze", {
         method:"POST",
@@ -99,45 +100,30 @@ async function run(){
 
     const data = await res.json();
 
-    document.getElementById("output").style.display = "block";
+    document.getElementById("out").style.display = "block";
 
-    const map = {
-        0:["NO SIGNAL","bad"],
-        1:["METADATA ONLY","warn"],
-        2:["PARTIAL SIGNAL","warn"],
-        3:["FULL SIGNAL","good"]
-    };
-
-    const [label, cls] = map[data.signal_level || 0];
-
-    document.getElementById("signal").innerHTML =
-        `<span class="${cls}">${label}</span>`;
-
-    document.getElementById("node").innerText = data.node;
     document.getElementById("score").innerText = data.noise_score ?? "N/A";
-    document.getElementById("confidence").innerText = data.confidence ?? 0;
-    document.getElementById("source").innerText = data.source_type;
-
-    document.getElementById("triggers").innerText =
-        (data.emotional_triggers || []).join(", ");
-
-    document.getElementById("summary").innerText =
-        data.logic_breakdown?.summary || "";
+    document.getElementById("conf").innerText = data.confidence ?? 0;
+    document.getElementById("src").innerText = data.source_type;
+    document.getElementById("trig").innerText = (data.emotional_triggers || []).join(", ");
+    document.getElementById("summary").innerText = data.logic_breakdown?.summary || "";
 
     const obs = document.getElementById("obs");
+    const frame = document.getElementById("frame");
+
     obs.innerHTML = "";
+    frame.innerHTML = "";
+
     (data.logic_breakdown?.key_observations || []).forEach(x=>{
-        const li=document.createElement("li");
-        li.textContent=x;
+        const li = document.createElement("li");
+        li.textContent = x;
         obs.appendChild(li);
     });
 
-    const fr = document.getElementById("frame");
-    fr.innerHTML = "";
     (data.logic_breakdown?.framing_notes || []).forEach(x=>{
-        const li=document.createElement("li");
-        li.textContent=x;
-        fr.appendChild(li);
+        const li = document.createElement("li");
+        li.textContent = x;
+        frame.appendChild(li);
     });
 }
 
