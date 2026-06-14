@@ -4,10 +4,8 @@ export default async function handler(req, res) {
     }
 
     const body = req.body || {};
-
     const input =
         typeof body.input === "string" ? body.input.trim()
-        : typeof body.text === "string" ? body.text.trim()
         : null;
 
     if (!input) {
@@ -29,21 +27,17 @@ export default async function handler(req, res) {
     };
 
     // =====================================================
-    // TYPE DETECTION GRAPH
+    // TYPE DETECTOR
     // =====================================================
 
     function detectType(str) {
         try {
-            const url = new URL(str);
+            const u = new URL(str);
 
-            const host = url.hostname;
-
-            if (host.includes("youtube.com") || host.includes("youtu.be")) return "youtube";
-            if (host.includes("tiktok.com")) return "tiktok";
-            if (host.includes("twitter.com") || host.includes("x.com")) return "tweet";
-            if (host.endsWith(".pdf")) return "pdf";
-            if (host.match(/\.(png|jpg|jpeg|webp)/)) return "image";
-
+            if (u.hostname.includes("youtube.com") || u.hostname.includes("youtu.be")) return "youtube";
+            if (u.hostname.includes("tiktok.com")) return "tiktok";
+            if (u.hostname.includes("x.com") || u.hostname.includes("twitter.com")) return "tweet";
+            if (u.pathname.endsWith(".pdf")) return "pdf";
             return "url";
         } catch {
             return "text";
@@ -53,53 +47,8 @@ export default async function handler(req, res) {
     const type = detectType(input);
 
     // =====================================================
-    // INGESTION LAYERS
+    // YOUTUBE LAYER STACK (CRITICAL FIX)
     // =====================================================
-
-    async function fetchHtml(url) {
-        try {
-            const r = await fetch(url, { redirect: "follow" });
-            const html = await r.text();
-
-            return html
-                .replace(/<script[^>]*>.*?<\/script>/gis, "")
-                .replace(/<style[^>]*>.*?<\/style>/gis, "")
-                .replace(/<[^>]+>/g, " ")
-                .replace(/\s+/g, " ")
-                .slice(0, 12000);
-        } catch {
-            return null;
-        }
-    }
-
-    async function fetchPdf(url) {
-        try {
-            const r = await fetch(url);
-            const buffer = await r.arrayBuffer();
-
-            const mod = await import("pdf-parse");
-            const data = await mod.default(Buffer.from(buffer));
-
-            return data.text?.slice(0, 12000) || null;
-        } catch {
-            return null;
-        }
-    }
-
-    async function fetchOcr(url) {
-        try {
-            // lightweight placeholder (swap with Tesseract or external OCR API)
-            const r = await fetch(url);
-            const buffer = await r.arrayBuffer();
-
-            const mod = await import("tesseract.js");
-            const { data } = await mod.recognize(Buffer.from(buffer));
-
-            return data.text?.slice(0, 8000) || null;
-        } catch {
-            return null;
-        }
-    }
 
     function extractYouTubeId(url) {
         try {
@@ -111,86 +60,120 @@ export default async function handler(req, res) {
         }
     }
 
-    async function fetchYoutubeTranscript(videoId) {
+    async function getTranscript(id) {
         try {
             const mod = await import("youtube-transcript");
             const yt = mod.YoutubeTranscript;
-            const t = await yt.fetchTranscript(videoId);
+            const t = await yt.fetchTranscript(id);
             return t.map(x => x.text).join(" ").trim();
         } catch {
             return null;
         }
     }
 
+    async function getYoutubeMetadata(videoId) {
+        try {
+            const url = `https://www.youtube.com/watch?v=${videoId}`;
+            const r = await fetch(url);
+            const html = await r.text();
+
+            const title = (html.match(/<title>(.*?)<\/title>/)?.[1] || "").replace(" - YouTube", "");
+
+            return {
+                title,
+                raw: html.slice(0, 5000)
+            };
+        } catch {
+            return null;
+        }
+    }
+
     // =====================================================
-    // MULTI-LAYER INGESTION GRAPH
+    // WEB LAYER
+    // =====================================================
+
+    async function fetchWeb(url) {
+        try {
+            const r = await fetch(url);
+            const html = await r.text();
+
+            return html
+                .replace(/<script[\s\S]*?<\/script>/g, "")
+                .replace(/<style[\s\S]*?<\/style>/g, "")
+                .replace(/<[^>]+>/g, " ")
+                .replace(/\s+/g, " ")
+                .slice(0, 12000);
+        } catch {
+            return null;
+        }
+    }
+
+    // =====================================================
+    // INGESTION GRAPH ENGINE
     // =====================================================
 
     let layers = [];
+    let signals = [];
+
     let text = input;
     let source_type = type;
 
     if (type === "youtube") {
+
         const id = extractYouTubeId(input);
 
-        let transcript = null;
-        if (id) transcript = await fetchYoutubeTranscript(id);
+        const [transcript, meta] = await Promise.all([
+            id ? getTranscript(id) : null,
+            id ? getYoutubeMetadata(id) : null
+        ]);
 
         layers.push({
             layer: "youtube_transcript",
             status: transcript ? "hit" : "miss"
         });
 
-        text = transcript || `[youtube_metadata_only:${id}]`;
+        layers.push({
+            layer: "youtube_metadata",
+            status: meta ? "hit" : "miss"
+        });
+
+        // IMPORTANT FIX:
+        // metadata is now ALWAYS used even if transcript fails
+        text = [
+            meta?.title || "",
+            transcript || "",
+            meta?.raw || ""
+        ].join(" ").trim();
     }
 
-    if (type === "tiktok" || type === "tweet" || type === "url") {
-        const html = await fetchHtml(input);
+    if (type === "url" || type === "tweet" || type === "tiktok") {
+        const web = await fetchWeb(input);
 
         layers.push({
             layer: "web_scrape",
-            status: html ? "hit" : "miss"
+            status: web ? "hit" : "miss"
         });
 
-        text = html || `[unreachable_url:${input}]`;
-    }
-
-    if (type === "pdf") {
-        const pdf = await fetchPdf(input);
-
-        layers.push({
-            layer: "pdf_parse",
-            status: pdf ? "hit" : "miss"
-        });
-
-        text = pdf || `[pdf_unavailable]`;
-    }
-
-    if (type === "image") {
-        const ocr = await fetchOcr(input);
-
-        layers.push({
-            layer: "ocr",
-            status: ocr ? "hit" : "miss"
-        });
-
-        text = ocr || `[ocr_failed]`;
+        text = web || `[unreachable:${input}]`;
     }
 
     // =====================================================
-    // SIGNAL MODEL
+    // SIGNAL ENGINE (FIXED LOGIC)
     // =====================================================
 
-    function signalScore(t) {
-        if (!t || t.length < 80) return 0;
-        if (t.includes("metadata_only") || t.includes("unreachable")) return 1;
-        if (t.length < 500) return 2;
+    function computeSignal(t) {
+        if (!t || t.length < 50) return 0;
+        if (t.includes("unreachable")) return 1;
+        if (t.length < 400) return 2;
         return 3;
     }
 
-    const signal_level = signalScore(text);
+    const signal_level = computeSignal(text);
 
-    // HARD STOP
+    // =====================================================
+    // HARD STOP ONLY FOR TRUE FAILURE
+    // =====================================================
+
     if (signal_level === 1) {
         return res.status(200).json({
             noise_score: null,
@@ -200,13 +183,9 @@ export default async function handler(req, res) {
             layers,
             emotional_triggers: [],
             logic_breakdown: {
-                summary: "Insufficient signal for analysis",
-                key_observations: [
-                    "Only metadata or unreachable content available"
-                ],
-                framing_notes: [
-                    "Execution skipped at ingestion layer"
-                ]
+                summary: "Source unreachable or empty.",
+                key_observations: ["No usable content extracted"],
+                framing_notes: ["Execution halted at ingestion layer"]
             },
             node: provider.name
         });
@@ -217,17 +196,14 @@ export default async function handler(req, res) {
     // =====================================================
 
     const SYSTEM_PROMPT = `
-You are a multi-source linguistic fusion engine.
+You are a multi-source fusion analysis engine.
 
-You analyze:
-- scraped web text
-- transcripts
-- OCR output
-- PDFs
-- metadata fallback content
+You must:
+- rely only on provided text
+- detect persuasion, framing, emotion, structure
+- never hallucinate missing context
 
 Return ONLY JSON:
-
 {
   "noise_score": number,
   "confidence": number,
@@ -291,12 +267,15 @@ Return ONLY JSON:
         }
 
         // =================================================
-        // CONFIDENCE FUSION LAYER
+        // REAL CONFIDENCE FUSION (FIXED)
         // =================================================
 
-        const confidence =
-            Math.min(1, parsed.confidence || 0) *
+        const evidenceWeight =
+            layers.filter(l => l.status === "hit").length +
             (signal_level / 3);
+
+        const confidence =
+            Math.min(1, (parsed.confidence || 0.4) * (evidenceWeight / 2));
 
         return res.status(200).json({
             noise_score: parsed.noise_score ?? 0,
