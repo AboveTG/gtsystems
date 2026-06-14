@@ -6,19 +6,18 @@ export default async function handler(req, res) {
     const body = req.body || {};
 
     const input =
-        typeof body.input === "string"
-            ? body.input.trim()
-            : typeof body.text === "string"
-            ? body.text.trim()
-            : null;
+        typeof body.input === "string" ? body.input.trim()
+        : typeof body.text === "string" ? body.text.trim()
+        : null;
 
     if (!input) {
         return res.status(400).json({ error: "No input provided" });
     }
 
     // =====================================================
-    // PROVIDER (MUST EXIST BEFORE USAGE)
+    // PROVIDER
     // =====================================================
+
     const provider = {
         name: "GROQ",
         url: "https://api.groq.com/openai/v1/chat/completions",
@@ -30,20 +29,20 @@ export default async function handler(req, res) {
     };
 
     // =====================================================
-    // TYPE DETECTION
+    // TYPE DETECTION GRAPH
     // =====================================================
+
     function detectType(str) {
         try {
             const url = new URL(str);
 
-            if (url.hostname.includes("youtu.be") || url.hostname.includes("youtube.com"))
-                return "youtube";
+            const host = url.hostname;
 
-            if (url.hostname.includes("tiktok.com"))
-                return "tiktok";
-
-            if (url.hostname.includes("x.com") || url.hostname.includes("twitter.com"))
-                return "tweet";
+            if (host.includes("youtube.com") || host.includes("youtu.be")) return "youtube";
+            if (host.includes("tiktok.com")) return "tiktok";
+            if (host.includes("twitter.com") || host.includes("x.com")) return "tweet";
+            if (host.endsWith(".pdf")) return "pdf";
+            if (host.match(/\.(png|jpg|jpeg|webp)/)) return "image";
 
             return "url";
         } catch {
@@ -54,8 +53,54 @@ export default async function handler(req, res) {
     const type = detectType(input);
 
     // =====================================================
-    // YOUTUBE HELPERS
+    // INGESTION LAYERS
     // =====================================================
+
+    async function fetchHtml(url) {
+        try {
+            const r = await fetch(url, { redirect: "follow" });
+            const html = await r.text();
+
+            return html
+                .replace(/<script[^>]*>.*?<\/script>/gis, "")
+                .replace(/<style[^>]*>.*?<\/style>/gis, "")
+                .replace(/<[^>]+>/g, " ")
+                .replace(/\s+/g, " ")
+                .slice(0, 12000);
+        } catch {
+            return null;
+        }
+    }
+
+    async function fetchPdf(url) {
+        try {
+            const r = await fetch(url);
+            const buffer = await r.arrayBuffer();
+
+            const mod = await import("pdf-parse");
+            const data = await mod.default(Buffer.from(buffer));
+
+            return data.text?.slice(0, 12000) || null;
+        } catch {
+            return null;
+        }
+    }
+
+    async function fetchOcr(url) {
+        try {
+            // lightweight placeholder (swap with Tesseract or external OCR API)
+            const r = await fetch(url);
+            const buffer = await r.arrayBuffer();
+
+            const mod = await import("tesseract.js");
+            const { data } = await mod.recognize(Buffer.from(buffer));
+
+            return data.text?.slice(0, 8000) || null;
+        } catch {
+            return null;
+        }
+    }
+
     function extractYouTubeId(url) {
         try {
             const u = new URL(url);
@@ -66,115 +111,120 @@ export default async function handler(req, res) {
         }
     }
 
-    async function tryTranscript(videoId) {
+    async function fetchYoutubeTranscript(videoId) {
         try {
             const mod = await import("youtube-transcript");
             const yt = mod.YoutubeTranscript;
-
             const t = await yt.fetchTranscript(videoId);
-
-            return t.map(x => x.text).join(" ").replace(/\s+/g, " ").trim();
+            return t.map(x => x.text).join(" ").trim();
         } catch {
             return null;
         }
     }
 
     // =====================================================
-    // URL SCRAPER (SAFE FALLBACK)
+    // MULTI-LAYER INGESTION GRAPH
     // =====================================================
-    async function fetchUrlPreview(url) {
-        try {
-            const r = await fetch(url, { redirect: "follow" });
-            const html = await r.text();
 
-            return html
-                .replace(/<script[^>]*>.*?<\/script>/gis, "")
-                .replace(/<style[^>]*>.*?<\/style>/gis, "")
-                .replace(/<[^>]+>/g, " ")
-                .replace(/\s+/g, " ")
-                .slice(0, 8000);
-        } catch {
-            return null;
-        }
-    }
-
-    // =====================================================
-    // INGESTION PIPELINE
-    // =====================================================
+    let layers = [];
     let text = input;
     let source_type = type;
 
     if (type === "youtube") {
-    const videoId = extractYouTubeId(input);
-    const transcript = videoId ? await tryTranscript(videoId) : null;
+        const id = extractYouTubeId(input);
 
-    let title = "";
-    let description = "";
+        let transcript = null;
+        if (id) transcript = await fetchYoutubeTranscript(id);
 
-    try {
-        const r = await fetch(`https://www.youtube.com/watch?v=${videoId}`);
-        const html = await r.text();
+        layers.push({
+            layer: "youtube_transcript",
+            status: transcript ? "hit" : "miss"
+        });
 
-        const titleMatch = html.match(/<title>(.*?)<\/title>/i);
-        title = titleMatch?.[1]?.replace(" - YouTube", "") || "";
-
-        const descMatch = html.match(/"shortDescription":"(.*?)"/);
-        description = descMatch?.[1] || "";
-    } catch {}
-
-    if (transcript && transcript.length > 100) {
-        text = transcript;
-        signal_level = 4;
-    } else {
-        text = `
-[YOUTUBE SEMANTIC FUSION MODE]
-
-VIDEO_ID: ${videoId || "unknown"}
-
-TITLE:
-${title}
-
-DESCRIPTION:
-${description}
-
-TRANSCRIPT:
-Unavailable
-
-INSTRUCTION:
-Infer discourse, intent, and framing from available metadata.
-Construct plausible semantic structure WITHOUT hallucinating facts.
-
-OUTPUT SHOULD RELY ON:
-- title semantics
-- channel context (if derivable)
-- description framing
-`;
-        signal_level = 3;
-    }
-}
-
-    // =====================================================
-    // SIGNAL SCORING
-    // =====================================================
-    function signalLevel(t) {
-        if (!t) return 0;
-        if (t.includes("METADATA MODE")) return 2;
-        if (t.length < 300) return 2;
-        if (t.length < 1200) return 3;
-        return 4;
+        text = transcript || `[youtube_metadata_only:${id}]`;
     }
 
-    const signal_level = signalLevel(text);
+    if (type === "tiktok" || type === "tweet" || type === "url") {
+        const html = await fetchHtml(input);
+
+        layers.push({
+            layer: "web_scrape",
+            status: html ? "hit" : "miss"
+        });
+
+        text = html || `[unreachable_url:${input}]`;
+    }
+
+    if (type === "pdf") {
+        const pdf = await fetchPdf(input);
+
+        layers.push({
+            layer: "pdf_parse",
+            status: pdf ? "hit" : "miss"
+        });
+
+        text = pdf || `[pdf_unavailable]`;
+    }
+
+    if (type === "image") {
+        const ocr = await fetchOcr(input);
+
+        layers.push({
+            layer: "ocr",
+            status: ocr ? "hit" : "miss"
+        });
+
+        text = ocr || `[ocr_failed]`;
+    }
 
     // =====================================================
-    // SYSTEM PROMPT
+    // SIGNAL MODEL
     // =====================================================
+
+    function signalScore(t) {
+        if (!t || t.length < 80) return 0;
+        if (t.includes("metadata_only") || t.includes("unreachable")) return 1;
+        if (t.length < 500) return 2;
+        return 3;
+    }
+
+    const signal_level = signalScore(text);
+
+    // HARD STOP
+    if (signal_level === 1) {
+        return res.status(200).json({
+            noise_score: null,
+            confidence: 0,
+            signal_level,
+            source_type,
+            layers,
+            emotional_triggers: [],
+            logic_breakdown: {
+                summary: "Insufficient signal for analysis",
+                key_observations: [
+                    "Only metadata or unreachable content available"
+                ],
+                framing_notes: [
+                    "Execution skipped at ingestion layer"
+                ]
+            },
+            node: provider.name
+        });
+    }
+
+    // =====================================================
+    // GROQ PROMPT
+    // =====================================================
+
     const SYSTEM_PROMPT = `
-You are a universal linguistic analysis engine.
+You are a multi-source linguistic fusion engine.
 
-Analyze only the provided input.
-
-Do NOT assume missing content.
+You analyze:
+- scraped web text
+- transcripts
+- OCR output
+- PDFs
+- metadata fallback content
 
 Return ONLY JSON:
 
@@ -188,36 +238,23 @@ Return ONLY JSON:
     "framing_notes": string[]
   }
 }
-`.trim();
+`;
 
-    // =====================================================
-    // SAFE PARSER
-    // =====================================================
     function safeParse(content) {
-        if (!content) return null;
-
         try {
             const cleaned = content.replace(/```json/g, "").replace(/```/g, "");
             const start = cleaned.indexOf("{");
             const end = cleaned.lastIndexOf("}");
-
-            if (start === -1 || end === -1) return null;
-
             return JSON.parse(cleaned.slice(start, end + 1));
         } catch {
             return null;
         }
     }
 
-    function clean(arr = []) {
-        return [...new Set(arr)]
-            .map(x => String(x).toLowerCase().trim())
-            .filter(Boolean);
-    }
+    // =====================================================
+    // MODEL EXECUTION
+    // =====================================================
 
-    // =====================================================
-    // MODEL CALL
-    // =====================================================
     try {
         const response = await fetch(provider.url, {
             method: "POST",
@@ -237,7 +274,7 @@ Return ONLY JSON:
 
         if (!response.ok) {
             return res.status(500).json({
-                error: "Model request failed",
+                error: "Model error",
                 details: raw.slice(0, 500)
             });
         }
@@ -253,17 +290,26 @@ Return ONLY JSON:
             });
         }
 
+        // =================================================
+        // CONFIDENCE FUSION LAYER
+        // =================================================
+
+        const confidence =
+            Math.min(1, parsed.confidence || 0) *
+            (signal_level / 3);
+
         return res.status(200).json({
             noise_score: parsed.noise_score ?? 0,
-            confidence: parsed.confidence ?? 0,
+            confidence,
             signal_level,
-            source_type,
-            emotional_triggers: clean(parsed.emotional_triggers),
-            logic_breakdown: {
-                summary: parsed.logic_breakdown?.summary || "",
-                key_observations: parsed.logic_breakdown?.key_observations || [],
-                framing_notes: parsed.logic_breakdown?.framing_notes || []
+            layers,
+            emotional_triggers: parsed.emotional_triggers || [],
+            logic_breakdown: parsed.logic_breakdown || {
+                summary: "",
+                key_observations: [],
+                framing_notes: []
             },
+            source_type,
             node: provider.name
         });
 
