@@ -14,9 +14,10 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "No input provided" });
     }
 
-    // =========================
-    // PROVIDER (MUST BE FIRST)
-    // =========================
+    // =========================================
+    // PROVIDER
+    // =========================================
+
     const provider = {
         name: "GROQ",
         url: "https://api.groq.com/openai/v1/chat/completions",
@@ -27,22 +28,31 @@ export default async function handler(req, res) {
         model: "llama-3.3-70b-versatile"
     };
 
-    // =========================
-    // HELPERS
-    // =========================
-    function isYouTubeUrl(str) {
+    // =========================================
+    // INPUT CLASSIFICATION
+    // =========================================
+
+    function detectType(str) {
         try {
-            const u = new URL(str);
-            return (
-                u.hostname.includes("youtube.com") ||
-                u.hostname.includes("youtu.be")
-            );
+            const url = new URL(str);
+
+            if (url.hostname.includes("youtube.com") || url.hostname.includes("youtu.be")) return "youtube";
+            if (url.hostname.includes("tiktok.com")) return "tiktok";
+            if (url.hostname.includes("twitter.com") || url.hostname.includes("x.com")) return "tweet";
+
+            return "url";
         } catch {
-            return false;
+            return "text";
         }
     }
 
-    function extractVideoId(url) {
+    const type = detectType(input);
+
+    // =========================================
+    // YOUTUBE EXTRACTION LAYER (SAFE)
+    // =========================================
+
+    function extractYouTubeId(url) {
         try {
             const u = new URL(url);
             if (u.hostname.includes("youtu.be")) return u.pathname.slice(1);
@@ -52,75 +62,127 @@ export default async function handler(req, res) {
         }
     }
 
-    async function fetchTranscript(videoId) {
+    async function tryTranscript(videoId) {
         try {
             const mod = await import("youtube-transcript");
             const yt = mod.YoutubeTranscript;
-
-            const transcript = await yt.fetchTranscript(videoId);
-
-            return transcript
-                .map(t => t.text)
-                .join(" ")
-                .replace(/\s+/g, " ")
-                .trim();
+            const t = await yt.fetchTranscript(videoId);
+            return t.map(x => x.text).join(" ").trim();
         } catch {
             return null;
         }
     }
 
-    // =========================
-    // INGESTION
-    // =========================
-    let text = input;
-    let source_type = "text";
-    let signal_level = 3;
+    // =========================================
+    // GENERIC WEB FALLBACK (LIGHTWEIGHT MOCK LAYER)
+    // =========================================
 
-    if (isYouTubeUrl(input)) {
-        source_type = "youtube";
+    async function fetchUrlPreview(url) {
+        try {
+            const r = await fetch(url, { redirect: "follow" });
+            const html = await r.text();
 
-        const videoId = extractVideoId(input);
-
-        let transcript = null;
-
-        if (videoId) {
-            transcript = await fetchTranscript(videoId);
+            return html
+                .replace(/<script[^>]*>.*?<\/script>/gis, "")
+                .replace(/<style[^>]*>.*?<\/style>/gis, "")
+                .replace(/<[^>]+>/g, " ")
+                .replace(/\s+/g, " ")
+                .slice(0, 8000);
+        } catch {
+            return null;
         }
+    }
+
+    // =========================================
+    // NORMALIZATION PIPELINE
+    // =========================================
+
+    let text = input;
+    let source_type = type;
+    let metadata = {};
+
+    if (type === "youtube") {
+        const videoId = extractYouTubeId(input);
+
+        const transcript = videoId ? await tryTranscript(videoId) : null;
 
         if (transcript) {
             text = transcript;
         } else {
-            signal_level = 1;
+            metadata = {
+                videoId,
+                mode: "metadata_fallback"
+            };
 
-            return res.status(200).json({
-                noise_score: null,
-                confidence: 0,
-                signal_level: 1,
-                source_type,
-                emotional_triggers: [],
-                logic_breakdown: {
-                    summary: "Metadata-only input. Transcript unavailable.",
-                    key_observations: [
-                        "YouTube URL detected",
-                        "Transcript blocked or disabled",
-                        "No linguistic content available"
-                    ],
-                    framing_notes: [
-                        "Model execution skipped due to insufficient signal"
-                    ]
-                },
-                node: provider.name
-            });
+            text = `
+[YOUTUBE METADATA MODE]
+Video ID: ${videoId || "unknown"}
+Instruction: infer discourse from metadata only.
+`;
         }
     }
 
-    // =========================
-    // PROMPT
-    // =========================
-    const SYSTEM_PROMPT = `
-You are a strict linguistic feature extractor.
+    if (type === "url" || type === "tiktok" || type === "tweet") {
+        const preview = await fetchUrlPreview(input);
 
-Analyze ONLY explicit text.
+        if (preview) {
+            text = preview;
+        } else {
+            text = `[UNREACHABLE SOURCE] ${input}`;
+        }
+    }
+
+    // =========================================
+    // SIGNAL LEVEL CLASSIFIER
+    // =========================================
+
+    function signalLevel(t) {
+        if (!t || t.length < 80) return 0;
+        if (t.includes("METADATA MODE")) return 1;
+        if (t.length < 500) return 2;
+        return 3;
+    }
+
+    const signal_level = signalLevel(text);
+
+    // =========================================
+    // HARD GATE
+    // =========================================
+
+    if (signal_level === 1) {
+        return res.status(200).json({
+            noise_score: null,
+            confidence: 0,
+            signal_level,
+            source_type,
+            emotional_triggers: [],
+            logic_breakdown: {
+                summary: "Low signal metadata-only input.",
+                key_observations: [
+                    "No primary text body available",
+                    "Metadata fallback active"
+                ],
+                framing_notes: [
+                    "Model execution intentionally constrained"
+                ]
+            },
+            node: provider.name
+        });
+    }
+
+    // =========================================
+    // SYSTEM PROMPT
+    // =========================================
+
+    const SYSTEM_PROMPT = `
+You are a universal linguistic signal analyzer.
+
+You analyze:
+- text
+- scraped web content
+- transcripts
+- social posts
+- metadata-derived pseudo-text
 
 Return ONLY JSON:
 
@@ -151,13 +213,10 @@ Return ONLY JSON:
         }
     }
 
-    function clean(arr = []) {
-        return [...new Set(arr.map(x => String(x).toLowerCase().trim()))];
-    }
-
-    // =========================
+    // =========================================
     // MODEL CALL
-    // =========================
+    // =========================================
+
     try {
         const response = await fetch(provider.url, {
             method: "POST",
@@ -177,7 +236,7 @@ Return ONLY JSON:
 
         if (!response.ok) {
             return res.status(500).json({
-                error: "Model request failed",
+                error: "Model error",
                 details: raw.slice(0, 500)
             });
         }
@@ -198,11 +257,11 @@ Return ONLY JSON:
             confidence: parsed.confidence ?? 0,
             signal_level,
             source_type,
-            emotional_triggers: clean(parsed.emotional_triggers),
-            logic_breakdown: {
-                summary: parsed.logic_breakdown?.summary || "",
-                key_observations: parsed.logic_breakdown?.key_observations || [],
-                framing_notes: parsed.logic_breakdown?.framing_notes || []
+            emotional_triggers: parsed.emotional_triggers || [],
+            logic_breakdown: parsed.logic_breakdown || {
+                summary: "",
+                key_observations: [],
+                framing_notes: []
             },
             node: provider.name
         });
