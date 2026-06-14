@@ -114,14 +114,7 @@ export default async function handler(req, res) {
                 mode: "metadata_fallback"
             };
 
-            text = `
-[YOUTUBE METADATA MODE]
-Video ID: ${videoId || "unknown"}
-Instruction: infer discourse from metadata only.
-`;
-        }
-    }
-
+            
     if (type === "url" || type === "tiktok" || type === "tweet") {
         const preview = await fetchUrlPreview(input);
 
@@ -144,31 +137,6 @@ Instruction: infer discourse from metadata only.
     }
 
     const signal_level = signalLevel(text);
-
-    // =========================================
-    // HARD GATE
-    // =========================================
-
-    if (signal_level === 1) {
-        return res.status(200).json({
-            noise_score: null,
-            confidence: 0,
-            signal_level,
-            source_type,
-            emotional_triggers: [],
-            logic_breakdown: {
-                summary: "Low signal metadata-only input.",
-                key_observations: [
-                    "No primary text body available",
-                    "Metadata fallback active"
-                ],
-                framing_notes: [
-                    "Model execution intentionally constrained"
-                ]
-            },
-            node: provider.name
-        });
-    }
 
     // =========================================
     // SYSTEM PROMPT
