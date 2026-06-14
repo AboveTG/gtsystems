@@ -6,17 +6,17 @@ export default async function handler(req, res) {
     const body = req.body || {};
 
     const input =
-        typeof body.input === "string"
-            ? body.input.trim()
-            : null;
+        typeof body.input === "string" ? body.input.trim()
+        : typeof body.text === "string" ? body.text.trim()
+        : null;
 
     if (!input) {
         return res.status(400).json({ error: "No input provided" });
     }
 
-    // -----------------------------
+    // =========================
     // PROVIDER (MUST BE FIRST)
-    // -----------------------------
+    // =========================
     const provider = {
         name: "GROQ",
         url: "https://api.groq.com/openai/v1/chat/completions",
@@ -27,9 +27,9 @@ export default async function handler(req, res) {
         model: "llama-3.3-70b-versatile"
     };
 
-    // -----------------------------
+    // =========================
     // HELPERS
-    // -----------------------------
+    // =========================
     function isYouTubeUrl(str) {
         try {
             const u = new URL(str);
@@ -52,30 +52,34 @@ export default async function handler(req, res) {
         }
     }
 
-    // -----------------------------
-    // YOUTUBE TRANSCRIPT (SAFE)
-    // -----------------------------
     async function fetchTranscript(videoId) {
         try {
             const mod = await import("youtube-transcript");
             const yt = mod.YoutubeTranscript;
 
-            const t = await yt.fetchTranscript(videoId);
+            const transcript = await yt.fetchTranscript(videoId);
 
-            return t.map(x => x.text).join(" ").replace(/\s+/g, " ").trim();
+            return transcript
+                .map(t => t.text)
+                .join(" ")
+                .replace(/\s+/g, " ")
+                .trim();
         } catch {
             return null;
         }
     }
 
+    // =========================
+    // INGESTION
+    // =========================
     let text = input;
     let source_type = "text";
-    let videoId = null;
+    let signal_level = 3;
 
-    // YouTube ingestion
     if (isYouTubeUrl(input)) {
         source_type = "youtube";
-        videoId = extractVideoId(input);
+
+        const videoId = extractVideoId(input);
 
         let transcript = null;
 
@@ -83,37 +87,40 @@ export default async function handler(req, res) {
             transcript = await fetchTranscript(videoId);
         }
 
-        // HARD FIX: NEVER fall back to "metadata only mode"
-        // Instead we preserve URL context as analyzable text
-        text =
-            transcript ||
-            `YouTube video reference:
-Video ID: ${videoId}
-URL: ${input}
+        if (transcript) {
+            text = transcript;
+        } else {
+            signal_level = 1;
 
-No transcript available. Analyze metadata + structure only.`;
+            return res.status(200).json({
+                noise_score: null,
+                confidence: 0,
+                signal_level: 1,
+                source_type,
+                emotional_triggers: [],
+                logic_breakdown: {
+                    summary: "Metadata-only input. Transcript unavailable.",
+                    key_observations: [
+                        "YouTube URL detected",
+                        "Transcript blocked or disabled",
+                        "No linguistic content available"
+                    ],
+                    framing_notes: [
+                        "Model execution skipped due to insufficient signal"
+                    ]
+                },
+                node: provider.name
+            });
+        }
     }
 
-    // Safety guard
-    if (!text || text.length < 5) {
-        return res.status(200).json({
-            noise_score: 0,
-            confidence: 0,
-            source_type,
-            emotional_triggers: [],
-            logic_breakdown: {
-                summary: "Insufficient input signal.",
-                key_observations: [],
-                framing_notes: []
-            },
-            node: provider.name
-        });
-    }
-
+    // =========================
+    // PROMPT
+    // =========================
     const SYSTEM_PROMPT = `
-You are a linguistic feature extractor.
+You are a strict linguistic feature extractor.
 
-Analyze ONLY explicit language.
+Analyze ONLY explicit text.
 
 Return ONLY JSON:
 
@@ -133,14 +140,9 @@ Return ONLY JSON:
         if (!content) return null;
 
         try {
-            const cleaned = content
-                .replace(/```json/g, "")
-                .replace(/```/g, "")
-                .trim();
-
+            const cleaned = content.replace(/```json/g, "").replace(/```/g, "");
             const start = cleaned.indexOf("{");
             const end = cleaned.lastIndexOf("}");
-
             if (start === -1 || end === -1) return null;
 
             return JSON.parse(cleaned.slice(start, end + 1));
@@ -148,7 +150,15 @@ Return ONLY JSON:
             return null;
         }
     }
-        try {
+
+    function clean(arr = []) {
+        return [...new Set(arr.map(x => String(x).toLowerCase().trim()))];
+    }
+
+    // =========================
+    // MODEL CALL
+    // =========================
+    try {
         const response = await fetch(provider.url, {
             method: "POST",
             headers: provider.headers,
@@ -179,20 +189,20 @@ Return ONLY JSON:
 
         if (!parsed) {
             return res.status(500).json({
-                error: "Invalid model output",
-                raw: content
+                error: "Invalid model output"
             });
         }
 
         return res.status(200).json({
             noise_score: parsed.noise_score ?? 0,
             confidence: parsed.confidence ?? 0,
+            signal_level,
             source_type,
-            emotional_triggers: parsed.emotional_triggers ?? [],
-            logic_breakdown: parsed.logic_breakdown ?? {
-                summary: "",
-                key_observations: [],
-                framing_notes: []
+            emotional_triggers: clean(parsed.emotional_triggers),
+            logic_breakdown: {
+                summary: parsed.logic_breakdown?.summary || "",
+                key_observations: parsed.logic_breakdown?.key_observations || [],
+                framing_notes: parsed.logic_breakdown?.framing_notes || []
             },
             node: provider.name
         });
