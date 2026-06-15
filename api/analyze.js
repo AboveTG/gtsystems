@@ -39,29 +39,29 @@ export default async function handler(req, res) {
     // ----------------------------
     // WEB EXTRACTION FIX
     // ----------------------------
-    if (type === "web") {
+if (type === "web") {
 
-        const extracted = await extractWebpageText(input);
+    const extracted = await extractWebpageText(input);
 
-        layers.push({
-            layer: "webpage",
-            status: extracted ? "hit" : "miss",
-            weight: 0.9
+    layers.push({
+        layer: "webpage",
+        status: extracted ? "hit" : "miss",
+        weight: extracted ? 1 : 0.2
+    });
+
+    if (!extracted) {
+        return res.status(200).json({
+            error: "Unable to extract readable article content",
+            signal_level: 0,
+            analysis_quality: 0,
+            rhetoric: null,
+            framing: null,
+            layers
         });
-
-        if (!extracted) {
-            return res.status(200).json({
-                error: "Failed to extract usable article content",
-                signal_level: 0,
-                analysis_quality: 0,
-                rhetoric: null,
-                framing: null,
-                layers
-            });
-        }
-
-        text = extracted;
     }
+
+    text = extracted;
+}
 
     // ----------------------------
     // SIGNAL
