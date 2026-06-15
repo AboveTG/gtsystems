@@ -1,77 +1,180 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
+<meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>GT Systems</title>
+<title>GT Systems – Ingestion Graph</title>
 
 <style>
 body {
+    margin:0;
     background:#0a0a0a;
     color:#e0e0e0;
     font-family:monospace;
-    display:flex;
-    justify-content:center;
-    padding:40px;
+    overflow:hidden;
 }
 
-.container { width:100%; max-width:900px; }
-
-h1 { color:#00ff41; text-align:center; }
+#ui {
+    position:absolute;
+    top:20px;
+    left:20px;
+    width:360px;
+    z-index:10;
+}
 
 textarea {
     width:100%;
-    height:180px;
+    height:120px;
     background:#000;
     color:#00ff41;
     border:1px solid #333;
-    padding:12px;
+    padding:10px;
 }
 
 button {
     width:100%;
-    padding:14px;
+    padding:12px;
+    margin-top:10px;
     background:#00ff41;
     border:none;
     font-weight:bold;
     cursor:pointer;
 }
 
-.panel {
-    margin-top:20px;
+#panel {
+    margin-top:10px;
     background:#111;
-    padding:15px;
+    padding:10px;
     border:1px solid #333;
 }
 
-.bad { color:#ff4d4d; }
-.warn { color:#ffcc00; }
-.good { color:#00ff41; }
+canvas {
+    position:absolute;
+    top:0;
+    left:0;
+}
+.nodeLabel {
+    font-size:12px;
+}
 </style>
+
 </head>
 
 <body>
 
-<div class="container">
-<h1>GT SYSTEMS</h1>
+<canvas id="graph"></canvas>
 
-<textarea id="input" placeholder="Paste text / URL / YouTube / PDF / image"></textarea>
-<button onclick="run()">ANALYZE</button>
+<div id="ui">
+    <textarea id="input" placeholder="Paste URL or text..."></textarea>
+    <button onclick="run()">RUN INGESTION GRAPH</button>
 
-<div id="out" class="panel" style="display:none">
-    <div id="signal"></div>
-    <div>Node: <span id="node"></span></div>
-    <div>Score: <span id="score"></span></div>
-    <div>Confidence: <span id="conf"></span></div>
-    <div>Layers: <pre id="layers"></pre></div>
+```
+<div id="panel">
+    <div><b>Signal:</b> <span id="signal">-</span></div>
+    <div><b>Confidence:</b> <span id="confidence">-</span></div>
+    <div><b>Layers:</b></div>
+    <pre id="layers"></pre>
 </div>
+```
 
 </div>
 
 <script>
-async function run(){
-    const input = document.getElementById("input").value.trim();
-    if(!input) return;
+
+const canvas = document.getElementById("graph");
+const ctx = canvas.getContext("2d");
+
+function resize(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.onresize = resize;
+resize();
+
+// -------------------- GRAPH STATE --------------------
+
+let nodes = [];
+let edges = [];
+
+function addNode(id, x, y, label, value=0) {
+    nodes.push({ id, x, y, label, value });
+}
+
+function addEdge(a, b) {
+    edges.push({ a, b });
+}
+
+// -------------------- DRAW --------------------
+
+function draw() {
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // edges
+    for (const e of edges) {
+        const a = nodes.find(n => n.id === e.a);
+        const b = nodes.find(n => n.id === e.b);
+        if (!a || !b) continue;
+
+        ctx.strokeStyle = "#222";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+    }
+
+    // nodes
+    for (const n of nodes) {
+
+        const intensity = Math.max(0, Math.min(1, n.value));
+
+        const r = 20 + intensity * 20;
+
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r, 0, Math.PI*2);
+
+        ctx.fillStyle = `rgba(${Math.floor(255*(1-intensity))}, ${Math.floor(255*intensity)}, 80, 0.9)`;
+        ctx.fill();
+
+        ctx.fillStyle = "#fff";
+        ctx.font = "12px monospace";
+        ctx.fillText(n.label, n.x - 30, n.y - 30);
+    }
+
+    requestAnimationFrame(draw);
+}
+draw();
+
+// -------------------- BUILD GRAPH --------------------
+
+function buildGraph(data) {
+
+    nodes = [];
+    edges = [];
+
+    const centerX = canvas.width/2;
+    const centerY = canvas.height/2;
+
+    addNode("input", centerX-300, centerY, "INPUT", 1);
+    addNode("youtube", centerX-100, centerY-150, "YOUTUBE", data.layers?.some(l=>l.layer.includes("youtube")) ? 1 : 0);
+    addNode("web", centerX-100, centerY+150, "WEB", data.layers?.some(l=>l.layer==="webpage") ? 1 : 0);
+    addNode("fusion", centerX+100, centerY, "FUSION", 0.7);
+    addNode("model", centerX+300, centerY, "MODEL", data.confidence || 0);
+
+    addEdge("input","youtube");
+    addEdge("input","web");
+    addEdge("youtube","fusion");
+    addEdge("web","fusion");
+    addEdge("fusion","model");
+}
+
+// -------------------- RUN --------------------
+
+async function run() {
+
+    const input = document.getElementById("input").value;
 
     const res = await fetch("/api/analyze", {
         method:"POST",
@@ -81,13 +184,18 @@ async function run(){
 
     const data = await res.json();
 
-    document.getElementById("out").style.display = "block";
+    document.getElementById("signal").innerText =
+        data.signal_level;
 
-    document.getElementById("node").innerText = data.node;
-    document.getElementById("score").innerText = data.noise_score;
-    document.getElementById("conf").innerText = data.confidence;
-    document.getElementById("layers").innerText = JSON.stringify(data.layers, null, 2);
+    document.getElementById("confidence").innerText =
+        data.confidence;
+
+    document.getElementById("layers").innerText =
+        JSON.stringify(data.layers, null, 2);
+
+    buildGraph(data);
 }
+
 </script>
 
 </body>
