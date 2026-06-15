@@ -1,4 +1,7 @@
 import { rhetoricalScan } from "../lib/rhetoric.js";
+import { framingScan } from "../lib/framing.js";
+import { fuseEvidence } from "../lib/fusion.js";
+import { computeAnalysisQuality } from "../lib/confidence.js";
 import {
     classifyInput,
     extractYouTubeId,
@@ -23,38 +26,23 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "No input provided" });
     }
 
-    // ----------------------------
-    // CLASSIFICATION (FIRST PASS)
-    // ----------------------------
+    // -----------------------------
+    // CLASSIFY
+    // -----------------------------
     const type = classifyInput(input);
-
     let text = normalizeInput(input, type);
-    let source_type = type;
+
     let layers = [];
+    let source_type = type;
 
-    // ----------------------------
-    // PROVIDER
-    // ----------------------------
-    const provider = {
-        name: "GROQ",
-        url: "https://api.groq.com/openai/v1/chat/completions",
-        headers: {
-            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-            "Content-Type": "application/json"
-        },
-        model: "llama-3.3-70b-versatile"
-    };
-
-    // ----------------------------
-    // YOUTUBE INGESTION
-    // ----------------------------
+    // -----------------------------
+    // YOUTUBE EXTRACTION (optional)
+    // -----------------------------
     async function fetchTranscript(videoId) {
         try {
             const mod = await import("youtube-transcript");
             const yt = mod.YoutubeTranscript;
-
             const t = await yt.fetchTranscript(videoId);
-
             return t.map(x => x.text).join(" ").replace(/\s+/g, " ").trim();
         } catch {
             return null;
@@ -67,171 +55,80 @@ export default async function handler(req, res) {
 
         layers.push({
             layer: "youtube_id",
-            status: videoId ? "hit" : "miss"
+            status: videoId ? "hit" : "miss",
+            weight: 0.8
         });
 
         const transcript = videoId ? await fetchTranscript(videoId) : null;
 
         if (transcript) {
             text = transcript;
-            layers.push({ layer: "youtube_transcript", status: "hit" });
+            layers.push({ layer: "youtube_transcript", status: "hit", weight: 1 });
         } else {
-            text = `[METADATA ONLY MODE] youtube:${videoId || "unknown"}`;
-            layers.push({ layer: "youtube_transcript", status: "miss" });
+            text = "";
+            layers.push({ layer: "youtube_transcript", status: "miss", weight: 0 });
         }
     }
 
     if (type === "web" || type === "tiktok" || type === "tweet") {
-        layers.push({ layer: type, status: "hit" });
+        layers.push({ layer: type, status: "hit", weight: 0.7 });
     }
 
-    // ----------------------------
-    // SIGNAL ENGINE
-    // ----------------------------
+    if (!text || text.trim().length === 0) {
+        return res.status(200).json({
+            error: "No analyzable content extracted",
+            source_type: type,
+            layers,
+            signal_level: 0,
+            rhetoric: null,
+            framing: null,
+            analysis_quality: 0
+        });
+    }
+
+    // -----------------------------
+    // SIGNAL GATE
+    // -----------------------------
     const signal = signalLevel(text);
 
-    // ----------------------------
-    // ⚠️ CRITICAL FIX: Rhetorical scan AFTER text is resolved
-    // ----------------------------
-    const rhetoric = rhetoricalScan(text);
+    // -----------------------------
+    // FUSE EVIDENCE
+    // -----------------------------
+    const fused = fuseEvidence(
+        layers.map(l => ({
+            ...l,
+            text: text
+        }))
+    );
 
-    // ----------------------------
-    // HARD GATE
-    // ----------------------------
-    if (signal === 1) {
-        return res.status(200).json({
-            noise_score: null,
-            confidence: 0,
-            signal_level: signal,
-            source_type,
-            layers,
-            rhetoric, // still expose weak signal structure
-            emotional_triggers: [],
-            logic_breakdown: {
-                summary: "Low signal ingestion. Execution skipped.",
-                key_observations: [
-                    "No usable linguistic body",
-                    "Metadata-only or minimal input"
-                ],
-                framing_notes: [
-                    "Model bypassed for safety"
-                ]
-            },
-            node: provider.name
-        });
-    }
+    // -----------------------------
+    // RHETORIC + FRAMING
+    // -----------------------------
+    const rhetoric = rhetoricalScan(fused.canonical.segments.map(s => s.text).join("\n\n"));
+    const framing = framingScan(fused.canonical.segments.map(s => s.text).join("\n\n"));
 
-    // ----------------------------
-    // SYSTEM PROMPT (NOW INCLUDES RHETORIC)
-    // ----------------------------
-    const SYSTEM_PROMPT = `
-You are a deterministic linguistic signal analyzer.
+    // -----------------------------
+    // QUALITY SCORE
+    // -----------------------------
+    const analysis_quality = computeAnalysisQuality({
+        layers: fused.layers,
+        signalLevel: signal
+    });
 
-You are given:
-- raw text
-- rhetorical feature scan metadata
+    // -----------------------------
+    // RESPONSE
+    // -----------------------------
+    return res.status(200).json({
 
-Use both.
+        source_type: type,
+        signal_level: signal,
 
-Return ONLY valid JSON:
+        layers: fused.layers,
 
-{
-  "noise_score": number,
-  "confidence": number,
-  "emotional_triggers": string[],
-  "logic_breakdown": {
-    "summary": string,
-    "key_observations": string[],
-    "framing_notes": string[]
-  }
-}
-`;
+        rhetoric,
+        framing,
+        analysis_quality,
 
-    function safeParse(content) {
-        try {
-            const cleaned = (content || "")
-                .replace(/```json/g, "")
-                .replace(/```/g, "");
-
-            const start = cleaned.indexOf("{");
-            const end = cleaned.lastIndexOf("}");
-
-            if (start === -1 || end === -1) return null;
-
-            return JSON.parse(cleaned.slice(start, end + 1));
-        } catch {
-            return null;
-        }
-    }
-
-    // ----------------------------
-    // MODEL CALL
-    // ----------------------------
-    try {
-
-        const response = await fetch(provider.url, {
-            method: "POST",
-            headers: provider.headers,
-            body: JSON.stringify({
-                model: provider.model,
-                temperature: 0.2,
-                response_format: { type: "json_object" },
-                messages: [
-                    {
-                        role: "system",
-                        content: SYSTEM_PROMPT
-                    },
-                    {
-                        role: "user",
-                        content: JSON.stringify({
-                            text,
-                            layers,
-                            rhetoric   // 🔥 now properly injected
-                        })
-                    }
-                ]
-            })
-        });
-
-        const raw = await response.text();
-
-        if (!response.ok) {
-            return res.status(500).json({
-                error: "Model failure",
-                details: raw.slice(0, 500)
-            });
-        }
-
-        const json = JSON.parse(raw);
-        const content = json?.choices?.[0]?.message?.content;
-
-        const parsed = safeParse(content);
-
-        if (!parsed) {
-            return res.status(500).json({
-                error: "Invalid model output"
-            });
-        }
-
-        return res.status(200).json({
-            noise_score: parsed.noise_score ?? 0,
-            confidence: parsed.confidence ?? 0,
-            signal_level: signal,
-            source_type,
-            layers,
-            rhetoric, // 🔥 now visible in UI graph
-            emotional_triggers: parsed.emotional_triggers ?? [],
-            logic_breakdown: parsed.logic_breakdown ?? {
-                summary: "",
-                key_observations: [],
-                framing_notes: []
-            },
-            node: provider.name
-        });
-
-    } catch (err) {
-        return res.status(500).json({
-            error: err.message
-        });
-    }
+        canonical: fused.canonical
+    });
 }
