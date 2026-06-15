@@ -1,3 +1,4 @@
+import { rhetoricalScan } from "../lib/rhetoric.js";
 import {
     classifyInput,
     extractYouTubeId,
@@ -23,12 +24,16 @@ export default async function handler(req, res) {
     }
 
     // ----------------------------
-    // SAFE CLASSIFICATION
+    // CLASSIFICATION (FIRST PASS)
     // ----------------------------
     const type = classifyInput(input);
 
+    let text = normalizeInput(input, type);
+    let source_type = type;
+    let layers = [];
+
     // ----------------------------
-    // PROVIDER (STATIC SAFE BLOCK)
+    // PROVIDER
     // ----------------------------
     const provider = {
         name: "GROQ",
@@ -41,7 +46,7 @@ export default async function handler(req, res) {
     };
 
     // ----------------------------
-    // YOUTUBE LAYER (SAFE FALLBACK)
+    // YOUTUBE INGESTION
     // ----------------------------
     async function fetchTranscript(videoId) {
         try {
@@ -56,18 +61,14 @@ export default async function handler(req, res) {
         }
     }
 
-    let text = normalizeInput(input, type);
-    let source_type = type;
-    let layers = [];
-
-    // ----------------------------
-    // INGESTION ROUTER
-    // ----------------------------
     if (type === "youtube") {
 
         const videoId = extractYouTubeId(input);
 
-        layers.push({ layer: "youtube_id", status: videoId ? "hit" : "miss" });
+        layers.push({
+            layer: "youtube_id",
+            status: videoId ? "hit" : "miss"
+        });
 
         const transcript = videoId ? await fetchTranscript(videoId) : null;
 
@@ -89,7 +90,14 @@ export default async function handler(req, res) {
     // ----------------------------
     const signal = signalLevel(text);
 
+    // ----------------------------
+    // ⚠️ CRITICAL FIX: Rhetorical scan AFTER text is resolved
+    // ----------------------------
+    const rhetoric = rhetoricalScan(text);
+
+    // ----------------------------
     // HARD GATE
+    // ----------------------------
     if (signal === 1) {
         return res.status(200).json({
             noise_score: null,
@@ -97,6 +105,7 @@ export default async function handler(req, res) {
             signal_level: signal,
             source_type,
             layers,
+            rhetoric, // still expose weak signal structure
             emotional_triggers: [],
             logic_breakdown: {
                 summary: "Low signal ingestion. Execution skipped.",
@@ -113,10 +122,16 @@ export default async function handler(req, res) {
     }
 
     // ----------------------------
-    // SYSTEM PROMPT
+    // SYSTEM PROMPT (NOW INCLUDES RHETORIC)
     // ----------------------------
     const SYSTEM_PROMPT = `
 You are a deterministic linguistic signal analyzer.
+
+You are given:
+- raw text
+- rhetorical feature scan metadata
+
+Use both.
 
 Return ONLY valid JSON:
 
@@ -162,8 +177,18 @@ Return ONLY valid JSON:
                 temperature: 0.2,
                 response_format: { type: "json_object" },
                 messages: [
-                    { role: "system", content: SYSTEM_PROMPT },
-                    { role: "user", content: text }
+                    {
+                        role: "system",
+                        content: SYSTEM_PROMPT
+                    },
+                    {
+                        role: "user",
+                        content: JSON.stringify({
+                            text,
+                            layers,
+                            rhetoric   // 🔥 now properly injected
+                        })
+                    }
                 ]
             })
         });
@@ -194,6 +219,7 @@ Return ONLY valid JSON:
             signal_level: signal,
             source_type,
             layers,
+            rhetoric, // 🔥 now visible in UI graph
             emotional_triggers: parsed.emotional_triggers ?? [],
             logic_breakdown: parsed.logic_breakdown ?? {
                 summary: "",
