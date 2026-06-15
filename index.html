@@ -11,15 +11,11 @@ body {
     background:#0a0a0a;
     color:#e0e0e0;
     font-family:monospace;
-    overflow:hidden;
 }
 
 #ui {
-    position:absolute;
-    top:20px;
-    left:20px;
-    width:380px;
-    z-index:10;
+    width:420px;
+    padding:20px;
 }
 
 textarea {
@@ -42,24 +38,16 @@ button {
 }
 
 .panel {
-    margin-top:10px;
+    margin-top:12px;
     background:#111;
     padding:10px;
     border:1px solid #333;
 }
 
-canvas {
-    position:absolute;
-    top:0;
-    left:0;
-}
-
-/* influence bars */
 .bar {
     height:8px;
     background:#222;
-    margin:4px 0;
-    position:relative;
+    margin:6px 0;
 }
 
 .bar > div {
@@ -71,31 +59,35 @@ canvas {
 
 <body>
 
-<canvas id="graph"></canvas>
-
 <div id="ui">
-    <textarea id="input" placeholder="Paste URL, text, video link..."></textarea>
-    <button onclick="run()">ANALYZE INFLUENCE</button>
+
+    <textarea id="input" placeholder="Paste text, URL, or video link..."></textarea>
+    <button onclick="run()">ANALYZE</button>
 
     <div class="panel">
-        <div><b>Signal Level:</b> <span id="signal">-</span></div>
-        <div><b>Confidence:</b> <span id="confidence">-</span></div>
+        <b>Signal Level:</b> <span id="signal">-</span><br>
+        <b>Analysis Quality:</b> <span id="quality">-</span>
     </div>
 
     <div class="panel">
-        <b>Influence Profile</b>
+        <b>Persuasion Intensity</b>
+        <div class="bar"><div id="intensity"></div></div>
+    </div>
 
-        <div>Fear</div>
+    <div class="panel">
+        <b>Emotional Vector</b>
+
+        Fear
         <div class="bar"><div id="fear"></div></div>
 
-        <div>Urgency</div>
+        Urgency
         <div class="bar"><div id="urgency"></div></div>
 
-        <div>Authority</div>
-        <div class="bar"><div id="authority"></div></div>
+        Hope
+        <div class="bar"><div id="hope"></div></div>
 
-        <div>Emotional Pressure</div>
-        <div class="bar"><div id="emotion"></div></div>
+        Anger
+        <div class="bar"><div id="anger"></div></div>
     </div>
 
     <div class="panel">
@@ -103,10 +95,6 @@ canvas {
         <pre id="framing"></pre>
     </div>
 
-    <div class="panel">
-        <b>Ground Truth Summary</b>
-        <pre id="summary"></pre>
-    </div>
 </div>
 
 <script>
@@ -123,30 +111,35 @@ async function run() {
 
     const data = await res.json();
 
-    // basic metadata
     document.getElementById("signal").innerText = data.signal_level;
-    document.getElementById("confidence").innerText = data.confidence;
+    document.getElementById("quality").innerText = data.analysis_quality;
 
-    // NOTE: expects future backend upgrade (important)
-    const r = data.rhetoric?.signals || [];
+    // -------------------------
+    // persuasion intensity
+    // -------------------------
+    const intensity = data.rhetoric?.persuasion_intensity ?? 0;
+    document.getElementById("intensity").style.width = intensity + "%";
 
-    function get(type) {
-        const hit = r.find(x => x.type === type);
-        return hit ? Math.min(100, hit.count * 20) : 0;
+    // -------------------------
+    // emotional vector
+    // -------------------------
+    const v = data.rhetoric?.vector || {};
+
+    function set(id, val) {
+        document.getElementById(id).style.width =
+            Math.min(100, (val || 0) * 100) + "%";
     }
 
-    // influence bars (derived from backend signals)
-    document.getElementById("fear").style.width = get("fear") + "%";
-    document.getElementById("urgency").style.width = get("urgency") + "%";
-    document.getElementById("authority").style.width = get("authority") + "%";
-    document.getElementById("emotion").style.width = get("emotion") + "%";
+    set("fear", v.fear);
+    set("urgency", v.urgency);
+    set("hope", v.hope);
+    set("anger", v.anger);
 
-    // framing (placeholder until backend upgrade)
+    // -------------------------
+    // framing
+    // -------------------------
     document.getElementById("framing").innerText =
-        JSON.stringify(data.logic_breakdown?.framing_notes || [], null, 2);
-
-    document.getElementById("summary").innerText =
-        data.logic_breakdown?.summary || "";
+        JSON.stringify(data.framing, null, 2);
 }
 
 </script>
