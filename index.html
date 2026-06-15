@@ -1,10 +1,9 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>GT Systems – Ingestion Graph</title>
+<title>Ground Truth Systems</title>
 
 <style>
 body {
@@ -19,7 +18,7 @@ body {
     position:absolute;
     top:20px;
     left:20px;
-    width:360px;
+    width:380px;
     z-index:10;
 }
 
@@ -42,7 +41,7 @@ button {
     cursor:pointer;
 }
 
-#panel {
+.panel {
     margin-top:10px;
     background:#111;
     padding:10px;
@@ -54,11 +53,20 @@ canvas {
     top:0;
     left:0;
 }
-.nodeLabel {
-    font-size:12px;
+
+/* influence bars */
+.bar {
+    height:8px;
+    background:#222;
+    margin:4px 0;
+    position:relative;
+}
+
+.bar > div {
+    height:100%;
+    background:#00ff41;
 }
 </style>
-
 </head>
 
 <body>
@@ -66,111 +74,42 @@ canvas {
 <canvas id="graph"></canvas>
 
 <div id="ui">
-    <textarea id="input" placeholder="Paste URL or text..."></textarea>
-    <button onclick="run()">RUN INGESTION GRAPH</button>
+    <textarea id="input" placeholder="Paste URL, text, video link..."></textarea>
+    <button onclick="run()">ANALYZE INFLUENCE</button>
 
-```
-<div id="panel">
-    <div><b>Signal:</b> <span id="signal">-</span></div>
-    <div><b>Confidence:</b> <span id="confidence">-</span></div>
-    <div><b>Layers:</b></div>
-    <pre id="layers"></pre>
-</div>
-```
+    <div class="panel">
+        <div><b>Signal Level:</b> <span id="signal">-</span></div>
+        <div><b>Confidence:</b> <span id="confidence">-</span></div>
+    </div>
 
+    <div class="panel">
+        <b>Influence Profile</b>
+
+        <div>Fear</div>
+        <div class="bar"><div id="fear"></div></div>
+
+        <div>Urgency</div>
+        <div class="bar"><div id="urgency"></div></div>
+
+        <div>Authority</div>
+        <div class="bar"><div id="authority"></div></div>
+
+        <div>Emotional Pressure</div>
+        <div class="bar"><div id="emotion"></div></div>
+    </div>
+
+    <div class="panel">
+        <b>Framing</b>
+        <pre id="framing"></pre>
+    </div>
+
+    <div class="panel">
+        <b>Ground Truth Summary</b>
+        <pre id="summary"></pre>
+    </div>
 </div>
 
 <script>
-
-const canvas = document.getElementById("graph");
-const ctx = canvas.getContext("2d");
-
-function resize(){
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-}
-window.onresize = resize;
-resize();
-
-// -------------------- GRAPH STATE --------------------
-
-let nodes = [];
-let edges = [];
-
-function addNode(id, x, y, label, value=0) {
-    nodes.push({ id, x, y, label, value });
-}
-
-function addEdge(a, b) {
-    edges.push({ a, b });
-}
-
-// -------------------- DRAW --------------------
-
-function draw() {
-
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    // edges
-    for (const e of edges) {
-        const a = nodes.find(n => n.id === e.a);
-        const b = nodes.find(n => n.id === e.b);
-        if (!a || !b) continue;
-
-        ctx.strokeStyle = "#222";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ctx.stroke();
-    }
-
-    // nodes
-    for (const n of nodes) {
-
-        const intensity = Math.max(0, Math.min(1, n.value));
-
-        const r = 20 + intensity * 20;
-
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, r, 0, Math.PI*2);
-
-        ctx.fillStyle = `rgba(${Math.floor(255*(1-intensity))}, ${Math.floor(255*intensity)}, 80, 0.9)`;
-        ctx.fill();
-
-        ctx.fillStyle = "#fff";
-        ctx.font = "12px monospace";
-        ctx.fillText(n.label, n.x - 30, n.y - 30);
-    }
-
-    requestAnimationFrame(draw);
-}
-draw();
-
-// -------------------- BUILD GRAPH --------------------
-
-function buildGraph(data) {
-
-    nodes = [];
-    edges = [];
-
-    const centerX = canvas.width/2;
-    const centerY = canvas.height/2;
-
-    addNode("input", centerX-300, centerY, "INPUT", 1);
-    addNode("youtube", centerX-100, centerY-150, "YOUTUBE", data.layers?.some(l=>l.layer.includes("youtube")) ? 1 : 0);
-    addNode("web", centerX-100, centerY+150, "WEB", data.layers?.some(l=>l.layer==="webpage") ? 1 : 0);
-    addNode("fusion", centerX+100, centerY, "FUSION", 0.7);
-    addNode("model", centerX+300, centerY, "MODEL", data.confidence || 0);
-
-    addEdge("input","youtube");
-    addEdge("input","web");
-    addEdge("youtube","fusion");
-    addEdge("web","fusion");
-    addEdge("fusion","model");
-}
-
-// -------------------- RUN --------------------
 
 async function run() {
 
@@ -184,16 +123,30 @@ async function run() {
 
     const data = await res.json();
 
-    document.getElementById("signal").innerText =
-        data.signal_level;
+    // basic metadata
+    document.getElementById("signal").innerText = data.signal_level;
+    document.getElementById("confidence").innerText = data.confidence;
 
-    document.getElementById("confidence").innerText =
-        data.confidence;
+    // NOTE: expects future backend upgrade (important)
+    const r = data.rhetoric?.signals || [];
 
-    document.getElementById("layers").innerText =
-        JSON.stringify(data.layers, null, 2);
+    function get(type) {
+        const hit = r.find(x => x.type === type);
+        return hit ? Math.min(100, hit.count * 20) : 0;
+    }
 
-    buildGraph(data);
+    // influence bars (derived from backend signals)
+    document.getElementById("fear").style.width = get("fear") + "%";
+    document.getElementById("urgency").style.width = get("urgency") + "%";
+    document.getElementById("authority").style.width = get("authority") + "%";
+    document.getElementById("emotion").style.width = get("emotion") + "%";
+
+    // framing (placeholder until backend upgrade)
+    document.getElementById("framing").innerText =
+        JSON.stringify(data.logic_breakdown?.framing_notes || [], null, 2);
+
+    document.getElementById("summary").innerText =
+        data.logic_breakdown?.summary || "";
 }
 
 </script>
