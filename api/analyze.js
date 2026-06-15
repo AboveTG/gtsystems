@@ -270,27 +270,49 @@ Return ONLY JSON:
         // REAL CONFIDENCE FUSION (FIXED)
         // =================================================
 
-        const evidenceWeight =
-            layers.filter(l => l.status === "hit").length +
-            (signal_level / 3);
+        function computeConfidence({ layers, signal_level, parsed }) {
 
-        const confidence =
-            Math.min(1, (parsed.confidence || 0.4) * (evidenceWeight / 2));
+    // -----------------------------
+    // Evidence score (HARD TRUTH)
+    // -----------------------------
+    const hitCount = layers.filter(l => l.status === "hit").length;
+    const totalLayers = layers.length || 1;
 
-        return res.status(200).json({
-            noise_score: parsed.noise_score ?? 0,
-            confidence,
-            signal_level,
-            layers,
-            emotional_triggers: parsed.emotional_triggers || [],
-            logic_breakdown: parsed.logic_breakdown || {
-                summary: "",
-                key_observations: [],
-                framing_notes: []
-            },
-            source_type,
-            node: provider.name
-        });
+    const evidenceScore = hitCount / totalLayers;
+
+    // -----------------------------
+    // Signal quality modifier
+    // -----------------------------
+    const signalScore = signal_level / 3;
+
+    // -----------------------------
+    // Model contribution (soft)
+    // -----------------------------
+    const modelScore = typeof parsed.confidence === "number"
+        ? parsed.confidence
+        : 0.4;
+
+    // -----------------------------
+    // Structural penalty
+    // (metadata-only degradation)
+    // -----------------------------
+    const isMetadataOnly =
+        layers.some(l => l.layer === "youtube_metadata" && l.status === "hit") &&
+        !layers.some(l => l.layer === "youtube_transcript" && l.status === "hit");
+
+    const structuralPenalty = isMetadataOnly ? 0.4 : 0;
+
+    // -----------------------------
+    // FINAL FUSION
+    // -----------------------------
+    const confidence =
+        (0.45 * evidenceScore) +
+        (0.25 * signalScore) +
+        (0.30 * modelScore) -
+        structuralPenalty;
+
+    return Math.max(0, Math.min(1, confidence));
+}
 
     } catch (err) {
         return res.status(500).json({
