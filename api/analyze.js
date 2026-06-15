@@ -10,6 +10,9 @@ import {
 
 import { extractWebpageText } from "../lib/layers/webpage.js";
 
+console.log("INPUT:", input);
+console.log("CLASSIFIED TYPE:", type);
+
 function isValidNarrative(text) {
     if (!text) return false;
 
