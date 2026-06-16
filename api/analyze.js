@@ -5,38 +5,69 @@ import { framingScan } from "../lib/framing.js";
 import { computeAnalysisQuality } from "../lib/confidence.js";
 import { fuseEvidence } from "../lib/fusion.js";
 
+/**
+ * STANDARD RESPONSE CONTRACT
+ * Every response MUST match this shape
+ */
+function ok(data) {
+    return {
+        ok: true,
+        timestamp: Date.now(),
+        ...data
+    };
+}
+
+function fail(error, extra = {}) {
+    return {
+        ok: false,
+        timestamp: Date.now(),
+        error,
+        ...extra
+    };
+}
+
+/**
+ * SAFE JSON RESPONSE (guaranteed valid)
+ */
+function send(res, payload, status = 200) {
+    res.status(status);
+    res.setHeader("Content-Type", "application/json");
+    return res.json(payload);
+}
+
 function isValidNarrative(text) {
-    if (!text) return false;
+    if (!text || typeof text !== "string") return false;
 
     const words = text.trim().split(/\s+/).length;
     const sentences = (text.match(/[.!?]/g) || []).length;
 
-    return words > 100 && sentences > 2;
+    return words > 80 && sentences > 2;
 }
 
 export default async function handler(req, res) {
 
     try {
 
+        // ----------------------------
+        // METHOD GUARD
+        // ----------------------------
         if (req.method !== "POST") {
-            return res.status(405).json({ error: "Method not allowed" });
+            return send(res, fail("method_not_allowed"), 405);
         }
 
-        const input = req.body?.input || "";
+        const input = req.body?.input;
 
-        if (!input.trim()) {
-            return res.status(400).json({ error: "No input provided" });
+        if (!input || typeof input !== "string" || !input.trim()) {
+            return send(res, fail("missing_input"), 400);
         }
-
-        console.log("INPUT:", input);
 
         const type = classifyInput(input);
-
         let text = normalizeInput(input, type);
+
         let layers = [];
 
         // ----------------------------
-        // WEB INGESTION
+        // WEB EXTRACTION
         // ----------------------------
         if (type === "web") {
 
@@ -49,102 +80,108 @@ export default async function handler(req, res) {
             });
 
             if (!extracted) {
-                return res.status(200).json({
-                    error: "web_extraction_failed",
+                return send(res, ok({
+                    source_type: type,
                     signal_level: 0,
                     analysis_quality: 0,
+                    layers,
                     rhetoric: null,
                     framing: null,
-                    layers
-                });
+                    note: "web_extraction_failed"
+                }));
             }
 
             text = extracted;
         }
 
         // ----------------------------
-        // SIGNAL
+        // SIGNAL ENGINE
         // ----------------------------
         const signal = signalLevel(text);
 
         const fused = fuseEvidence([
-    {
-        layer: "input",
-        status: "hit",
-        weight: 1,
-        text
-    },
-    ...(type === "web"
-        ? [{
-            layer: "web",
-            status: "hit",
-            weight: 1,
-            text
-        }]
-        : [])
-]);
+            {
+                layer: "input",
+                status: "hit",
+                weight: 1,
+                text
+            }
+        ]);
 
-       const canonicalText = (fused?.text || "").trim();
+        const canonicalText = fused?.text || "";
 
-        // ----------------------------
-        // VALIDATION GATE
-        // ----------------------------
-        if (!canonicalText || canonicalText.length < 60) {
-    return res.status(200).json({
-        error: "empty_canonical_text",
-        signal_level: signal,
-        analysis_quality: 0,
-        layers: fused.layers,
-        debug: {
-            reason: "fusion_output_invalid",
-            length: canonicalText.length
+        if (!isValidNarrative(canonicalText)) {
+            return send(res, ok({
+                source_type: type,
+                signal_level: signal,
+                analysis_quality: 0,
+                layers: fused.layers,
+                rhetoric: null,
+                framing: null,
+                note: "insufficient_narrative"
+            }));
         }
-    });
-}
 
         // ----------------------------
-        // ANALYSIS
+        // ANALYSIS LAYERS
         // ----------------------------
-        const rhetoric = rhetoricalScan(canonicalText);
+        let rhetoric = null;
         let framing = null;
 
-try {
-    framing = framingScan(canonicalText);
-} catch (e) {
-    console.error("framingScan failed:", e.message);
-    framing = {
-        primary_frame: "unknown",
-        balance_score: 0,
-        missing_perspectives: ["analysis_failed"]
-    };
-}
+        try {
+            rhetoric = rhetoricalScan(canonicalText);
+        } catch (e) {
+            rhetoric = { error: "rhetoric_failed" };
+        }
 
-        const analysis_quality = computeAnalysisQuality({
-    layers: fused.layers,
-    signalLevel: signal,
-    modelConfidence: 0.6
-});
+        try {
+            framing = framingScan(canonicalText);
+        } catch (e) {
+            framing = { error: "framing_failed" };
+        }
 
-        return res.status(200).json({
-    source_type: type,
-    signal_level: signal,
-    analysis_quality,
+        // ----------------------------
+        // QUALITY SCORE
+        // ----------------------------
+        let analysis_quality = 0;
 
-    debug: {
-        extracted_length: text?.length || 0,
-        canonical_length: canonicalText?.length || 0,
-        first_500_chars: canonicalText?.slice(0, 500) || ""
-    },
+        try {
+            analysis_quality = computeAnalysisQuality({
+                layers: fused.layers,
+                signalLevel: signal,
+                rhetoric,
+                framing
+            });
+        } catch (e) {
+            analysis_quality = 0;
+        }
 
-    layers: fused.layers,
+        // ----------------------------
+        // FINAL RESPONSE
+        // ----------------------------
+        return send(res, ok({
+            source_type: type,
+            signal_level: signal,
+            analysis_quality,
 
-    rhetoric,
-    framing
-});
+            layers: fused.layers,
+
+            rhetoric,
+            framing,
+
+            debug: {
+                input_length: text.length,
+                canonical_length: canonicalText.length
+            }
+        }));
 
     } catch (err) {
-        return res.status(500).json({
-            error: err.message
-        });
+
+        // ----------------------------
+        // GLOBAL CATCH (NEVER BREAK JSON)
+        // ----------------------------
+        return send(res, fail("internal_error", {
+            message: err.message
+        }), 500);
     }
 }
