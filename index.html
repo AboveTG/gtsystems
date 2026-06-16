@@ -61,7 +61,7 @@ button {
 
 <div id="ui">
 
-    <textarea id="input" placeholder="Paste text or URL..."></textarea>
+    <textarea id="input"></textarea>
     <button onclick="run()">ANALYZE</button>
 
     <div class="panel">
@@ -72,6 +72,11 @@ button {
     <div class="panel">
         <b>Persuasion Intensity</b>
         <div class="bar"><div id="intensity"></div></div>
+    </div>
+
+    <div class="panel">
+        <b>Final Summary</b>
+        <div id="summary"></div>
     </div>
 
     <div class="panel">
@@ -98,17 +103,7 @@ async function run() {
         body: JSON.stringify({ input })
     });
 
-    const raw = await res.text();
-
-    let data;
-
-    try {
-        data = JSON.parse(raw);
-    } catch (e) {
-        console.error("NON-JSON RESPONSE:", raw);
-        document.getElementById("error").innerText = raw;
-        return;
-    }
+    const data = await res.json();
 
     if (!data.ok) {
         document.getElementById("error").innerText =
@@ -116,16 +111,23 @@ async function run() {
         return;
     }
 
+    // METRICS
     document.getElementById("signal").innerText =
         data.meta?.signal_level ?? "-";
 
     document.getElementById("quality").innerText =
         data.meta?.analysis_quality ?? "-";
 
+    // INTENSITY
     const intensity = data.content?.persuasion_intensity ?? 0;
     document.getElementById("intensity").style.width =
         Math.min(100, intensity * 100) + "%";
 
+    // SUMMARY (FIXED + RESTORED)
+    document.getElementById("summary").innerText =
+        data.content?.summary ?? "-";
+
+    // FRAMING
     document.getElementById("framing").innerText =
         JSON.stringify(data.content?.framing ?? {}, null, 2);
 }
