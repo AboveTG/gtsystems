@@ -108,30 +108,40 @@ export default async function handler(req, res) {
         // ----------------------------
         // FINAL RESPONSE CONTRACT
         // ----------------------------
-        return res.status(200).json({
-            source_type: type,
-            signal_level: signal,
-            analysis_quality,
+        const response = {
+    source_type: type,
+    signal_level: signal,
+    analysis_quality,
 
-            persuasion_intensity: rhetoric?.persuasion_score ?? 0,
+    // ----------------------------
+    // UI DISPLAY LAYERS (PRIMARY)
+    // ----------------------------
+    persuasion_intensity: rhetoric?.persuasion_score ?? 0,
 
-            layers: fused.layers,
+    emotional_vector: rhetoric?.vector ?? null,
 
-            rhetoric,
-            framing,
+    framing: framing ?? null,
 
-            ground_truth: {
-                summary: canonicalText.slice(0, 600)
-            },
+    techniques: rhetoric?.signals ?? [],
 
-            debug: {
-                text_length: canonicalText.length
-            }
-        });
+    ground_truth_summary: ground_truth?.summary ?? "",
 
-    } catch (err) {
-        return res.status(500).json({
-            error: err.message
-        });
-    }
-}
+    // ----------------------------
+    // SYSTEM DATA (SECONDARY)
+    // ----------------------------
+    layers: fused.layers,
+
+    confidence: analysis_quality
+};
+
+// DEBUG ONLY (NEVER USED BY UI)
+const debug = {
+    text_length: canonicalText.length,
+    raw_rhetoric_score: rhetoric,
+    raw_framing: framing
+};
+
+return res.status(200).json({
+    ...response,
+    debug
+});
