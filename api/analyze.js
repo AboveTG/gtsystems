@@ -103,8 +103,7 @@ export default async function handler(req, res) {
         const analysis_quality = computeAnalysisQuality({
     layers: fused.layers,
     signalLevel: signal,
-    rhetoric,
-    framing
+    modelConfidence: 0.6
 });
 
         return res.status(200).json({
