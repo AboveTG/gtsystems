@@ -108,17 +108,21 @@ export default async function handler(req, res) {
 });
 
         return res.status(200).json({
-            source_type: type,
-            signal_level: signal,
-            analysis_quality,
+    source_type: type,
+    signal_level: signal,
+    analysis_quality,
 
-            layers: fused.layers,
+    debug: {
+        extracted_length: text?.length || 0,
+        canonical_length: canonicalText?.length || 0,
+        first_500_chars: canonicalText?.slice(0, 500) || ""
+    },
 
-            rhetoric,
-            framing,
+    layers: fused.layers,
 
-            canonical: canonicalText
-        });
+    rhetoric,
+    framing
+});
 
     } catch (err) {
         return res.status(500).json({
