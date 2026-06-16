@@ -1,18 +1,22 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<title>GT Systems</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Ground Truth Systems</title>
 
 <style>
 body {
     margin:0;
     background:#0a0a0a;
     color:#e0e0e0;
-    font-family: monospace;
+    font-family:monospace;
 }
 
-#ui { width:420px; padding:20px; }
+#ui {
+    width:420px;
+    padding:20px;
+}
 
 textarea {
     width:100%;
@@ -20,6 +24,7 @@ textarea {
     background:#000;
     color:#00ff41;
     border:1px solid #333;
+    padding:10px;
 }
 
 button {
@@ -29,6 +34,7 @@ button {
     background:#00ff41;
     border:none;
     font-weight:bold;
+    cursor:pointer;
 }
 
 .panel {
@@ -37,79 +43,91 @@ button {
     padding:10px;
     border:1px solid #333;
 }
+
+.bar {
+    height:8px;
+    background:#222;
+    margin:6px 0;
+}
+
+.bar > div {
+    height:100%;
+    background:#00ff41;
+}
 </style>
 </head>
 
 <body>
 
 <div id="ui">
-    <textarea id="input"></textarea>
+
+    <textarea id="input" placeholder="Paste text or URL..."></textarea>
     <button onclick="run()">ANALYZE</button>
 
     <div class="panel">
-        Signal: <span id="signal">-</span><br>
-        Quality: <span id="quality">-</span>
+        <b>Signal Level:</b> <span id="signal">-</span><br>
+        <b>Analysis Quality:</b> <span id="quality">-</span>
     </div>
 
     <div class="panel">
-        Persuasion: <span id="persuasion">-</span>
+        <b>Persuasion Intensity</b>
+        <div class="bar"><div id="intensity"></div></div>
     </div>
 
     <div class="panel">
-        Framing:
+        <b>Framing</b>
         <pre id="framing"></pre>
     </div>
 
     <div class="panel">
-        Error:
+        <b>Error</b>
         <pre id="error"></pre>
     </div>
+
 </div>
 
 <script>
 
 async function run() {
+
     const input = document.getElementById("input").value;
+
+    const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input })
+    });
+
+    const raw = await res.text();
 
     let data;
 
     try {
-        const res = await fetch("/api/analyze", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ input })
-        });
-
-        const raw = await res.text();
-
-        try {
-            data = JSON.parse(raw);
-        } catch (e) {
-            document.getElementById("error").innerText =
-                "Non-JSON response:\n" + raw.slice(0, 300);
-            return;
-        }
-
-    } catch (err) {
-        document.getElementById("error").innerText = err.message;
+        data = JSON.parse(raw);
+    } catch (e) {
+        console.error("NON-JSON RESPONSE:", raw);
+        document.getElementById("error").innerText = raw;
         return;
     }
 
-    // SAFE UI BINDING
+    if (!data.ok) {
+        document.getElementById("error").innerText =
+            data.error || "unknown_error";
+        return;
+    }
+
     document.getElementById("signal").innerText =
-        data.signal_level ?? "-";
+        data.meta?.signal_level ?? "-";
 
     document.getElementById("quality").innerText =
-        data.analysis_quality ?? "-";
+        data.meta?.analysis_quality ?? "-";
 
-    document.getElementById("persuasion").innerText =
-        data.persuasion_intensity ?? "-";
+    const intensity = data.content?.persuasion_intensity ?? 0;
+    document.getElementById("intensity").style.width =
+        Math.min(100, intensity * 100) + "%";
 
     document.getElementById("framing").innerText =
-        JSON.stringify(data.framing ?? {}, null, 2);
-
-    document.getElementById("error").innerText =
-        data.error ?? "";
+        JSON.stringify(data.content?.framing ?? {}, null, 2);
 }
 
 </script>
