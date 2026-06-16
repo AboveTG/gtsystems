@@ -106,7 +106,18 @@ export default async function handler(req, res) {
         // ANALYSIS
         // ----------------------------
         const rhetoric = rhetoricalScan(canonicalText);
-        const framing = framingScan(canonicalText);
+        let framing = null;
+
+try {
+    framing = framingScan(canonicalText);
+} catch (e) {
+    console.error("framingScan failed:", e.message);
+    framing = {
+        primary_frame: "unknown",
+        balance_score: 0,
+        missing_perspectives: ["analysis_failed"]
+    };
+}
 
         const analysis_quality = computeAnalysisQuality({
     layers: fused.layers,
