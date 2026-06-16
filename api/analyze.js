@@ -76,21 +76,23 @@ export default async function handler(req, res) {
             }
         ]);
 
-        const canonicalText = fused.text;
+       const canonicalText = (fused?.text || "").trim();
 
         // ----------------------------
         // VALIDATION GATE
         // ----------------------------
-        if (!isValidNarrative(canonicalText)) {
-            return res.status(200).json({
-                error: "insufficient_narrative",
-                signal_level: signal,
-                analysis_quality: 0,
-                rhetoric: null,
-                framing: null,
-                layers: fused.layers
-            });
+        if (!canonicalText || canonicalText.length < 100) {
+    return res.status(200).json({
+        error: "empty_canonical_text",
+        signal_level: signal,
+        analysis_quality: 0,
+        layers: fused.layers,
+        debug: {
+            reason: "fusion_output_invalid",
+            length: canonicalText.length
         }
+    });
+}
 
         // ----------------------------
         // ANALYSIS
