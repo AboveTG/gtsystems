@@ -11,7 +11,7 @@ function isValidText(text) {
     const words = text.trim().split(/\s+/).length;
     const sentences = (text.match(/[.!?]/g) || []).length;
 
-    return words >= 120 && sentences >= 3;
+    return words >= 100 && sentences >= 2;
 }
 
 export default async function handler(req, res) {
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
         const input = req.body?.input;
 
-        if (!input || !input.trim()) {
+        if (!input || typeof input !== "string" || !input.trim()) {
             return res.status(400).json({ error: "No input provided" });
         }
 
@@ -32,7 +32,7 @@ export default async function handler(req, res) {
         const layers = [];
 
         // ----------------------------
-        // WEB EXTRACTION
+        // INGESTION
         // ----------------------------
         if (type === "web") {
             const extracted = await extractWebpageText(input);
@@ -40,15 +40,18 @@ export default async function handler(req, res) {
             layers.push({
                 layer: "webpage",
                 status: extracted ? "hit" : "miss",
-                weight: extracted ? 1 : 0.2
+                weight: extracted ? 1 : 0.15
             });
 
             if (!extracted) {
                 return res.status(200).json({
-                    error: "web_extraction_failed",
+                    source_type: type,
                     signal_level: 0,
                     analysis_quality: 0,
-                    layers
+                    layers,
+                    rhetoric: null,
+                    framing: null,
+                    error: "web_extraction_failed"
                 });
             }
 
@@ -71,12 +74,18 @@ export default async function handler(req, res) {
 
         const canonicalText = (fused.text || "").trim();
 
+        // ----------------------------
+        // HARD GATE
+        // ----------------------------
         if (!isValidText(canonicalText)) {
             return res.status(200).json({
-                error: "insufficient_text",
+                source_type: type,
                 signal_level: signal,
                 analysis_quality: 0,
                 layers: fused.layers,
+                rhetoric: null,
+                framing: null,
+                error: "insufficient_text",
                 debug: {
                     length: canonicalText?.length || 0
                 }
@@ -96,14 +105,24 @@ export default async function handler(req, res) {
             framing
         });
 
+        // ----------------------------
+        // FINAL RESPONSE CONTRACT
+        // ----------------------------
         return res.status(200).json({
             source_type: type,
             signal_level: signal,
             analysis_quality,
 
+            persuasion_intensity: rhetoric?.persuasion_score ?? 0,
+
             layers: fused.layers,
+
             rhetoric,
             framing,
+
+            ground_truth: {
+                summary: canonicalText.slice(0, 600)
+            },
 
             debug: {
                 text_length: canonicalText.length
