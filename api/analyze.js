@@ -48,7 +48,11 @@ layers.push({
     // ----------------------------
     // WEB EXTRACTION FIX
     // ----------------------------
-if (type === "web") {
+const isWeb =
+    type === "web" ||
+    classification.type === "web";
+
+if (isWeb) {
 
     const extracted = await extractWebpageText(input);
 
@@ -60,7 +64,8 @@ if (type === "web") {
 
     if (!extracted) {
         return res.status(200).json({
-            error: "Unable to extract readable article content",
+            error: "web_extraction_failed",
+            classification,
             signal_level: 0,
             analysis_quality: 0,
             rhetoric: null,
