@@ -68,13 +68,21 @@ export default async function handler(req, res) {
         const signal = signalLevel(text);
 
         const fused = fuseEvidence([
-            {
-                layer: type,
-                status: "hit",
-                weight: 1,
-                text
-            }
-        ]);
+    {
+        layer: "input",
+        status: "hit",
+        weight: 1,
+        text
+    },
+    ...(type === "web"
+        ? [{
+            layer: "web",
+            status: "hit",
+            weight: 1,
+            text
+        }]
+        : [])
+]);
 
        const canonicalText = (fused?.text || "").trim();
 
