@@ -34,8 +34,14 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "No input provided" });
     }
 
-    const type = classifyInput(input);
+    const classification = classifyInput(input);
+const type = classification.type;
 
+layers.push({
+    layer: "classification",
+    status: type,
+    weight: classification.confidence || 0.5
+});
     let text = normalizeInput(input, type);
     let layers = [];
 
