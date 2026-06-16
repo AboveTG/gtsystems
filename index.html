@@ -1,145 +1,458 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <title>Ground Truth Systems</title>
 
 <style>
-body {
-    margin:0;
-    background:#0a0a0a;
-    color:#e0e0e0;
-    font-family:monospace;
+
+*{
+    box-sizing:border-box;
 }
 
-#ui {
-    width:420px;
+body{
+    margin:0;
+    background:#0a0a0a;
+    color:#e5e5e5;
+    font-family:Consolas, monospace;
+}
+
+.container{
+    max-width:1200px;
+    margin:auto;
     padding:20px;
 }
 
-textarea {
+h1{
+    color:#00ff41;
+    margin-bottom:10px;
+}
+
+.subtitle{
+    color:#888;
+    margin-bottom:20px;
+}
+
+textarea{
     width:100%;
-    height:120px;
+    min-height:180px;
     background:#000;
     color:#00ff41;
     border:1px solid #333;
-    padding:10px;
+    padding:12px;
+    resize:vertical;
+    font-family:inherit;
 }
 
-button {
+button{
     width:100%;
-    padding:12px;
-    margin-top:10px;
+    padding:14px;
+    margin-top:12px;
     background:#00ff41;
+    color:#000;
     border:none;
     font-weight:bold;
     cursor:pointer;
+    font-size:16px;
 }
 
-.panel {
-    margin-top:12px;
+button:hover{
+    opacity:.9;
+}
+
+.panel{
+    margin-top:18px;
+    padding:16px;
     background:#111;
-    padding:10px;
     border:1px solid #333;
 }
 
-.bar {
-    height:8px;
-    background:#222;
-    margin:6px 0;
+.panel h2{
+    margin-top:0;
+    color:#00ff41;
 }
 
-.bar > div {
+.metric{
+    margin:8px 0;
+}
+
+.score{
+    font-size:28px;
+    font-weight:bold;
+    color:#00ff41;
+}
+
+.bar{
+    width:100%;
+    height:18px;
+    background:#222;
+    margin-top:4px;
+}
+
+.bar-fill{
     height:100%;
     background:#00ff41;
+    width:0%;
 }
+
+.technique{
+    border-bottom:1px solid #222;
+    padding:12px 0;
+}
+
+.technique:last-child{
+    border-bottom:none;
+}
+
+ul{
+    margin-top:8px;
+}
+
+pre{
+    white-space:pre-wrap;
+    word-wrap:break-word;
+}
+
+.loading{
+    color:#00ff41;
+}
+
+.error{
+    color:#ff5555;
+}
+
+.small{
+    color:#888;
+    font-size:12px;
+}
+
 </style>
+
 </head>
 
 <body>
 
-<div id="ui">
+<div class="container">
 
-    <textarea id="input" placeholder="Paste text, URL, or video link..."></textarea>
-    <button onclick="run()">ANALYZE</button>
+```
+<h1>GROUND TRUTH SYSTEMS</h1>
 
-    <div class="panel">
-        <b>Signal Level:</b> <span id="signal">-</span><br>
-        <b>Analysis Quality:</b> <span id="quality">-</span>
+<div class="subtitle">
+    Analyze content for persuasion, influence, framing, emotional pressure, and missing perspectives.
+</div>
+
+<textarea
+    id="input"
+    placeholder="Paste text, article URL, YouTube URL, transcript, speech, news article, social media post, or other content..."
+></textarea>
+
+<button onclick="runAnalysis()">
+    ANALYZE
+</button>
+
+<div id="status" class="panel" style="display:none">
+    Ready
+</div>
+
+<div class="panel">
+    <h2>CONTENT SUMMARY</h2>
+    <div id="summary">
+        No analysis yet.
+    </div>
+</div>
+
+<div class="panel">
+    <h2>INFLUENCE ANALYSIS</h2>
+
+    <div class="metric">
+        Persuasion Score
+        <div class="score" id="persuasionScore">-</div>
     </div>
 
-    <div class="panel">
-        <b>Persuasion Intensity</b>
-        <div class="bar"><div id="intensity"></div></div>
+    <div class="metric">
+        Emotional Pressure:
+        <span id="emotionalPressure">-</span>
     </div>
 
-    <div class="panel">
-        <b>Emotional Vector</b>
-
-        Fear
-        <div class="bar"><div id="fear"></div></div>
-
-        Urgency
-        <div class="bar"><div id="urgency"></div></div>
-
-        Hope
-        <div class="bar"><div id="hope"></div></div>
-
-        Anger
-        <div class="bar"><div id="anger"></div></div>
+    <div class="metric">
+        Overall Risk:
+        <span id="overallRisk">-</span>
     </div>
 
-    <div class="panel">
-        <b>Framing</b>
-        <pre id="framing"></pre>
+    <div class="metric">
+        Confidence:
+        <span id="confidence">-</span>
     </div>
+</div>
+
+<div class="panel">
+    <h2>MANIPULATION TECHNIQUES</h2>
+    <div id="techniques">
+        No analysis yet.
+    </div>
+</div>
+
+<div class="panel">
+    <h2>EMOTIONAL TRIGGERS</h2>
+    <ul id="triggers">
+    </ul>
+</div>
+
+<div class="panel">
+    <h2>FRAMING ANALYSIS</h2>
+
+    <div>
+        <strong>Primary Frame</strong>
+        <div id="primaryFrame">-</div>
+    </div>
+
+    <br>
+
+    <div>
+        <strong>Balance Score</strong>
+        <div id="balanceScore">-</div>
+    </div>
+
+    <br>
+
+    <div>
+        <strong>Missing Perspectives</strong>
+        <ul id="missingPerspectives"></ul>
+    </div>
+</div>
+
+<div class="panel">
+    <h2>GROUND TRUTH SUMMARY</h2>
+    <div id="groundTruthSummary">
+        No analysis yet.
+    </div>
+</div>
+
+<div class="panel">
+    <h2>DEBUG</h2>
+
+    <div>
+        Signal Level:
+        <span id="signalLevel">-</span>
+    </div>
+
+    <div>
+        Analysis Quality:
+        <span id="analysisQuality">-</span>
+    </div>
+
+    <div>
+        Source Type:
+        <span id="sourceType">-</span>
+    </div>
+
+    <pre id="rawResponse"></pre>
+</div>
+```
 
 </div>
 
 <script>
 
-async function run() {
+function setStatus(message, error=false){
 
-    const input = document.getElementById("input").value;
+    const el =
+        document.getElementById("status");
 
-    const res = await fetch("/api/analyze", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ input })
-    });
+    el.style.display = "block";
+    el.className = error
+        ? "panel error"
+        : "panel loading";
 
-    const data = await res.json();
+    el.textContent = message;
+}
 
-    document.getElementById("signal").innerText = data.signal_level;
-    document.getElementById("quality").innerText = data.analysis_quality;
+function safe(value, fallback="-"){
+    return value ?? fallback;
+}
 
-    // -------------------------
-    // persuasion intensity
-    // -------------------------
-    const intensity = data.rhetoric?.persuasion_intensity ?? 0;
-    document.getElementById("intensity").style.width = intensity + "%";
+async function runAnalysis(){
 
-    // -------------------------
-    // emotional vector
-    // -------------------------
-    const v = data.rhetoric?.vector || {};
+    const input =
+        document.getElementById("input").value.trim();
 
-    function set(id, val) {
-        document.getElementById(id).style.width =
-            Math.min(100, (val || 0) * 100) + "%";
+    if(!input){
+        alert("Please enter content.");
+        return;
     }
 
-    set("fear", v.fear);
-    set("urgency", v.urgency);
-    set("hope", v.hope);
-    set("anger", v.anger);
+    setStatus("Analyzing...");
 
-    // -------------------------
-    // framing
-    // -------------------------
-    document.getElementById("framing").innerText =
-        JSON.stringify(data.framing, null, 2);
+    try{
+
+        const response =
+            await fetch("/api/analyze",{
+                method:"POST",
+                headers:{
+                    "Content-Type":"application/json"
+                },
+                body:JSON.stringify({
+                    input
+                })
+            });
+
+        const data =
+            await response.json();
+
+        console.log("GROUND TRUTH RESPONSE:", data);
+
+        setStatus("Analysis complete.");
+
+        document.getElementById(
+            "rawResponse"
+        ).textContent =
+            JSON.stringify(data,null,2);
+
+        document.getElementById(
+            "signalLevel"
+        ).textContent =
+            safe(data.signal_level);
+
+        document.getElementById(
+            "analysisQuality"
+        ).textContent =
+            safe(data.analysis_quality);
+
+        document.getElementById(
+            "sourceType"
+        ).textContent =
+            safe(data.source_type);
+
+        document.getElementById(
+            "summary"
+        ).textContent =
+            data.content_summary?.plain_english ||
+            data.summary ||
+            "Summary unavailable.";
+
+        document.getElementById(
+            "persuasionScore"
+        ).textContent =
+            data.influence_analysis?.persuasion_score ??
+            data.rhetoric?.persuasion_intensity ??
+            "-";
+
+        document.getElementById(
+            "emotionalPressure"
+        ).textContent =
+            data.influence_analysis?.emotional_pressure ||
+            "-";
+
+        document.getElementById(
+            "overallRisk"
+        ).textContent =
+            data.influence_analysis?.overall_risk ||
+            "-";
+
+        document.getElementById(
+            "confidence"
+        ).textContent =
+            data.confidence ??
+            data.analysis_quality ??
+            "-";
+
+        const techniques =
+            document.getElementById("techniques");
+
+        techniques.innerHTML = "";
+
+        if(Array.isArray(data.techniques)){
+
+            data.techniques.forEach(t => {
+
+                techniques.innerHTML += `
+                    <div class="technique">
+                        <strong>${t.name || ""}</strong><br>
+                        Score: ${t.score || 0}<br>
+                        ${t.description || ""}
+                    </div>
+                `;
+            });
+
+        } else {
+
+            techniques.innerHTML =
+                "No technique analysis returned.";
+        }
+
+        const triggers =
+            document.getElementById("triggers");
+
+        triggers.innerHTML = "";
+
+        const triggerList =
+            data.emotional_triggers || [];
+
+        triggerList.forEach(x => {
+
+            const li =
+                document.createElement("li");
+
+            li.textContent = x;
+
+            triggers.appendChild(li);
+        });
+
+        document.getElementById(
+            "primaryFrame"
+        ).textContent =
+            data.framing_analysis?.primary_frame ||
+            data.framing?.primary_frame ||
+            "-";
+
+        document.getElementById(
+            "balanceScore"
+        ).textContent =
+            data.framing_analysis?.balance_score ||
+            data.framing?.balance_score ||
+            "-";
+
+        const missing =
+            document.getElementById(
+                "missingPerspectives"
+            );
+
+        missing.innerHTML = "";
+
+        const missingItems =
+            data.framing_analysis?.missing_perspectives ||
+            data.framing?.missing_perspectives ||
+            [];
+
+        missingItems.forEach(item => {
+
+            const li =
+                document.createElement("li");
+
+            li.textContent = item;
+
+            missing.appendChild(li);
+        });
+
+        document.getElementById(
+            "groundTruthSummary"
+        ).textContent =
+            data.ground_truth_summary ||
+            "No Ground Truth summary returned.";
+
+    }
+    catch(err){
+
+        console.error(err);
+
+        setStatus(
+            "Analysis failed: " + err.message,
+            true
+        );
+    }
 }
 
 </script>
