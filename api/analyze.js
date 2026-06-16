@@ -20,19 +20,13 @@ function safeJson(res, payload, status = 200) {
 export default async function handler(req, res) {
     try {
         if (req.method !== "POST") {
-            return safeJson(res, {
-                ok: false,
-                error: "method_not_allowed"
-            }, 405);
+            return safeJson(res, { ok: false, error: "method_not_allowed" }, 405);
         }
 
         const input = req.body?.input;
 
         if (!input || typeof input !== "string" || !input.trim()) {
-            return safeJson(res, {
-                ok: false,
-                error: "missing_input"
-            }, 400);
+            return safeJson(res, { ok: false, error: "missing_input" }, 400);
         }
 
         const type = classifyInput(input);
@@ -48,7 +42,7 @@ export default async function handler(req, res) {
 
             try {
                 extracted = await extractWebpageText(input);
-            } catch (e) {
+            } catch {
                 extracted = null;
             }
 
@@ -90,10 +84,7 @@ export default async function handler(req, res) {
             return safeJson(res, {
                 ok: false,
                 error: "insufficient_text",
-                meta: {
-                    source_type: type,
-                    signal_level: signal
-                },
+                meta: { source_type: type, signal_level: signal },
                 layers: fused.layers || []
             });
         }
@@ -111,7 +102,16 @@ export default async function handler(req, res) {
             framing
         });
 
-        const response = {
+        // -----------------------------
+        // FINAL SUMMARY (RESTORED)
+        // -----------------------------
+        const summary = canonicalText
+            .split(". ")
+            .slice(0, 5)
+            .join(". ")
+            .slice(0, 800);
+
+        return safeJson(res, {
             ok: true,
 
             meta: {
@@ -121,6 +121,7 @@ export default async function handler(req, res) {
             },
 
             content: {
+                summary,   // ✅ RESTORED FINAL SUMMARY
                 persuasion_intensity: rhetoric?.persuasion_score ?? 0,
                 emotional_vector: {
                     fear: 0,
@@ -129,8 +130,7 @@ export default async function handler(req, res) {
                     anger: 0
                 },
                 framing,
-                techniques: rhetoric?.signals ?? [],
-                summary: canonicalText.slice(0, 800)
+                techniques: rhetoric?.signals ?? []
             },
 
             layers: fused.layers || [],
@@ -140,9 +140,7 @@ export default async function handler(req, res) {
             },
 
             error: null
-        };
-
-        return safeJson(res, response);
+        });
 
     } catch (err) {
         return safeJson(res, {
