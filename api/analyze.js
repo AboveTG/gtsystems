@@ -101,9 +101,11 @@ export default async function handler(req, res) {
         const framing = framingScan(canonicalText);
 
         const analysis_quality = computeAnalysisQuality({
-            layers: fused.layers,
-            signalLevel: signal
-        });
+    layers: fused.layers,
+    signalLevel: signal,
+    rhetoric,
+    framing
+});
 
         return res.status(200).json({
             source_type: type,
