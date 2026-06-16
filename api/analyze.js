@@ -89,7 +89,7 @@ export default async function handler(req, res) {
         // ----------------------------
         // VALIDATION GATE
         // ----------------------------
-        if (!canonicalText || canonicalText.length < 100) {
+        if (!canonicalText || canonicalText.length < 60) {
     return res.status(200).json({
         error: "empty_canonical_text",
         signal_level: signal,
