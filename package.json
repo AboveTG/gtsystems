@@ -1,18 +1,19 @@
 {
-"name": "gtsystems",
-"version": "1.0.0",
-"type": "module",
+  "name": "gtsystems",
+  "version": "1.0.0",
+  "type": "module",
 
-"scripts": {
-"dev": "vercel dev",
-"start": "vercel dev"
-},
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "vercel dev"
+  },
 
-"dependencies": {
-"youtube-transcript": "^1.2.1"
-},
+  "dependencies": {
+    "youtube-transcript": "^1.2.1",
+    "jsdom": "^24.0.0"
+  },
 
-"engines": {
-"node": "20.x"
-}
+  "engines": {
+    "node": "20.x"
+  }
 }
