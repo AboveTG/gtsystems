@@ -5,28 +5,34 @@ import { framingScan } from "../lib/framing.js";
 import { computeAnalysisQuality } from "../lib/confidence.js";
 import { fuseEvidence } from "../lib/fusion.js";
 
-function safeJson(res, payload, status = 200) {
-    res.status(status).setHeader("Content-Type", "application/json");
-    return res.json(payload);
+function isValidText(text) {
+    return (
+        typeof text === "string" &&
+        text.trim().split(/\s+/).length >= 80
+    );
 }
 
-function isValidText(text) {
-    if (!text || typeof text !== "string") return false;
-    const words = text.trim().split(/\s+/).length;
-    const sentences = (text.match(/[.!?]/g) || []).length;
-    return words >= 100 && sentences >= 2;
+function safeJson(res, payload, status = 200) {
+    res.setHeader("Content-Type", "application/json");
+    return res.status(status).json(payload);
 }
 
 export default async function handler(req, res) {
     try {
         if (req.method !== "POST") {
-            return safeJson(res, { error: "Method not allowed" }, 405);
+            return safeJson(res, {
+                ok: false,
+                error: "method_not_allowed"
+            }, 405);
         }
 
         const input = req.body?.input;
 
         if (!input || typeof input !== "string" || !input.trim()) {
-            return safeJson(res, { error: "No input provided" }, 400);
+            return safeJson(res, {
+                ok: false,
+                error: "missing_input"
+            }, 400);
         }
 
         const type = classifyInput(input);
@@ -34,7 +40,9 @@ export default async function handler(req, res) {
 
         const layers = [];
 
-        // ---------------- WEB ----------------
+        // -----------------------------
+        // WEB EXTRACTION
+        // -----------------------------
         if (type === "web") {
             let extracted = null;
 
@@ -52,10 +60,9 @@ export default async function handler(req, res) {
 
             if (!extracted) {
                 return safeJson(res, {
-                    source_type: type,
-                    signal_level: 0,
-                    analysis_quality: 0,
+                    ok: false,
                     error: "web_extraction_failed",
+                    meta: { source_type: type },
                     layers
                 });
             }
@@ -63,6 +70,9 @@ export default async function handler(req, res) {
             text = extracted;
         }
 
+        // -----------------------------
+        // SIGNAL
+        // -----------------------------
         const signal = signalLevel(text);
 
         const fused = fuseEvidence([
@@ -74,18 +84,23 @@ export default async function handler(req, res) {
             }
         ]);
 
-        const canonicalText = (fused.text || "").trim();
+        const canonicalText = (fused?.text || "").trim();
 
         if (!isValidText(canonicalText)) {
             return safeJson(res, {
-                source_type: type,
-                signal_level: signal,
-                analysis_quality: 0,
+                ok: false,
                 error: "insufficient_text",
-                layers: fused.layers
+                meta: {
+                    source_type: type,
+                    signal_level: signal
+                },
+                layers: fused.layers || []
             });
         }
 
+        // -----------------------------
+        // ANALYSIS
+        // -----------------------------
         const rhetoric = rhetoricalScan(canonicalText);
         const framing = framingScan(canonicalText);
 
@@ -96,28 +111,44 @@ export default async function handler(req, res) {
             framing
         });
 
-        return safeJson(res, {
-            source_type: type,
-            signal_level: signal,
-            analysis_quality,
+        const response = {
+            ok: true,
 
-            persuasion_intensity: rhetoric?.persuasion_score ?? 0,
-            emotional_vector: rhetoric?.vector ?? null,
+            meta: {
+                source_type: type,
+                signal_level: signal,
+                analysis_quality
+            },
 
-            framing,
-            rhetoric,
-            layers: fused.layers,
+            content: {
+                persuasion_intensity: rhetoric?.persuasion_score ?? 0,
+                emotional_vector: {
+                    fear: 0,
+                    urgency: 0,
+                    hope: 0,
+                    anger: 0
+                },
+                framing,
+                techniques: rhetoric?.signals ?? [],
+                summary: canonicalText.slice(0, 800)
+            },
 
-            ground_truth: {
-                summary: canonicalText.slice(0, 600)
-            }
-        });
+            layers: fused.layers || [],
+
+            debug: {
+                text_length: canonicalText.length
+            },
+
+            error: null
+        };
+
+        return safeJson(res, response);
 
     } catch (err) {
-        // CRITICAL: NEVER BREAK JSON CONTRACT
         return safeJson(res, {
-            error: "internal_error",
-            message: err?.message || "unknown failure"
+            ok: false,
+            error: "internal_server_error",
+            message: err?.message || "unknown_error"
         }, 500);
     }
 }
