@@ -7,16 +7,19 @@ import { computeAnalysisQuality } from "../lib/confidence.js";
 
 export default async function handler(req, res) {
 
-    try {
+    // ---------------- SAFE ENTRY ----------------
+    if (req.method !== "POST") {
+        res.statusCode = 405;
+        return res.end(JSON.stringify({ error: "method_not_allowed" }));
+    }
 
-        if (req.method !== "POST") {
-            return res.status(405).json({ error: "method_not_allowed" });
-        }
+    try {
 
         const input = req.body?.input;
 
-        if (!input) {
-            return res.status(400).json({ error: "missing_input" });
+        if (!input || typeof input !== "string") {
+            res.statusCode = 400;
+            return res.end(JSON.stringify({ error: "missing_input" }));
         }
 
         const type = classifyInput(input);
@@ -24,7 +27,9 @@ export default async function handler(req, res) {
 
         let layers = [];
 
+        // ---------------- WEB ----------------
         if (type === "web") {
+
             const extracted = await extractWebpageText(input);
 
             layers.push({
@@ -34,12 +39,12 @@ export default async function handler(req, res) {
             });
 
             if (!extracted) {
-                return res.json({
+                return res.end(JSON.stringify({
                     source_type: type,
                     signal_level: 0,
                     analysis_quality: 0,
                     layers
-                });
+                }));
             }
 
             text = extracted;
@@ -63,19 +68,20 @@ export default async function handler(req, res) {
             framing
         });
 
-        return res.json({
+        return res.end(JSON.stringify({
             source_type: type,
             signal_level: signal,
             analysis_quality,
             layers: fused.layers,
             rhetoric,
             framing
-        });
+        }));
 
     } catch (err) {
-        return res.status(500).json({
+
+        return res.end(JSON.stringify({
             error: "internal_error",
             message: err.message
-        });
+        }));
     }
 }
