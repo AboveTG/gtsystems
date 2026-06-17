@@ -93,61 +93,72 @@ button {
 
 <script>
 
+<script>
+
 async function run() {
+    const inputEl = document.getElementById("input");
+    const errorEl = document.getElementById("error");
 
-    const input = document.getElementById("input").value;
+    const input = inputEl.value;
 
-    // reset error
-    document.getElementById("error").innerText = "";
+    errorEl.innerText = "";
 
-    const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input })
-    });
+    try {
+        const res = await fetch("/api/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ input })
+        });
 
-    const data = await res.json();
+        // HARD DEBUG: capture non-JSON responses
+        const text = await res.text();
 
-    // -----------------------
-    // HARD FAILURE HANDLING
-    // -----------------------
-    if (!data.ok) {
-        document.getElementById("error").innerText =
-            data.error || "unknown_error";
-        return;
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            errorEl.innerText =
+                "NON-JSON RESPONSE:\n\n" + text.slice(0, 500);
+            return;
+        }
+
+        if (!res.ok || !data.ok) {
+            errorEl.innerText =
+                data?.error || "REQUEST FAILED";
+            return;
+        }
+
+        const report = data.report;
+
+        document.getElementById("signal").innerText =
+            report.meta?.signal_level ?? "-";
+
+        document.getElementById("quality").innerText =
+            report.influence?.confidence ?? "-";
+
+        const intensity = report.influence?.persuasion_intensity ?? 0;
+        document.getElementById("intensity").style.width =
+            Math.min(100, intensity * 100) + "%";
+
+        document.getElementById("summary").innerText =
+            report.summary?.brief ?? "-";
+
+        document.getElementById("framing").innerText =
+            JSON.stringify(report.framing ?? {}, null, 2);
+
+    } catch (err) {
+        errorEl.innerText =
+            "JS ERROR:\n" + (err?.message || err);
+        console.error(err);
     }
-
-    const report = data.report;
-
-    // -----------------------
-    // META
-    // -----------------------
-    document.getElementById("signal").innerText =
-        report.meta?.signal_level ?? "-";
-
-    document.getElementById("quality").innerText =
-        report.influence?.confidence ?? "-";
-
-    // -----------------------
-    // INTENSITY
-    // -----------------------
-    const intensity = report.influence?.persuasion_intensity ?? 0;
-
-    document.getElementById("intensity").style.width =
-        Math.min(100, intensity * 100) + "%";
-
-    // -----------------------
-    // SUMMARY
-    // -----------------------
-    document.getElementById("summary").innerText =
-        report.summary?.brief ?? "-";
-
-    // -----------------------
-    // FRAMING
-    // -----------------------
-    document.getElementById("framing").innerText =
-        JSON.stringify(report.framing ?? {}, null, 2);
 }
+
+window.onerror = function(msg, src, line, col, err) {
+    document.getElementById("error").innerText =
+        "GLOBAL ERROR:\n" + msg;
+};
+
+</script>
 
 </script>
 
