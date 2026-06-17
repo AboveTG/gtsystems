@@ -111,6 +111,40 @@ async function run() {
         return;
     }
 
+    const report = data.report;
+
+    // -----------------------
+    // META
+    // -----------------------
+    document.getElementById("signal").innerText =
+        report.meta?.signal_level ?? "-";
+
+    // -----------------------
+    // SUMMARY
+    // -----------------------
+    document.getElementById("summary").innerText =
+        report.summary?.brief ?? "-";
+
+    // -----------------------
+    // PERSUASION
+    // -----------------------
+    const intensity = report.influence?.persuasion_intensity ?? 0;
+    document.getElementById("intensity").style.width =
+        Math.min(100, intensity * 100) + "%";
+
+    // -----------------------
+    // FRAMING
+    // -----------------------
+    document.getElementById("framing").innerText =
+        JSON.stringify(report.framing ?? {}, null, 2);
+
+    // -----------------------
+    // QUALITY (optional display fallback)
+    // -----------------------
+    document.getElementById("quality").innerText =
+        report.influence?.confidence ?? "-";
+}
+
     // METRICS
     document.getElementById("signal").innerText =
         data.meta?.signal_level ?? "-";
