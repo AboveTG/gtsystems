@@ -7,52 +7,52 @@
 
 <style>
 body {
-    margin:0;
-    background:#0a0a0a;
-    color:#e0e0e0;
-    font-family:monospace;
+    margin: 0;
+    background: #0a0a0a;
+    color: #e0e0e0;
+    font-family: monospace;
 }
 
 #ui {
-    width:420px;
-    padding:20px;
+    width: 420px;
+    padding: 20px;
 }
 
 textarea {
-    width:100%;
-    height:120px;
-    background:#000;
-    color:#00ff41;
-    border:1px solid #333;
-    padding:10px;
+    width: 100%;
+    height: 120px;
+    background: #000;
+    color: #00ff41;
+    border: 1px solid #333;
+    padding: 10px;
 }
 
 button {
-    width:100%;
-    padding:12px;
-    margin-top:10px;
-    background:#00ff41;
-    border:none;
-    font-weight:bold;
-    cursor:pointer;
+    width: 100%;
+    padding: 12px;
+    margin-top: 10px;
+    background: #00ff41;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
 }
 
 .panel {
-    margin-top:12px;
-    background:#111;
-    padding:10px;
-    border:1px solid #333;
+    margin-top: 12px;
+    background: #111;
+    padding: 10px;
+    border: 1px solid #333;
 }
 
 .bar {
-    height:8px;
-    background:#222;
-    margin:6px 0;
+    height: 8px;
+    background: #222;
+    margin: 6px 0;
 }
 
 .bar > div {
-    height:100%;
-    background:#00ff41;
+    height: 100%;
+    background: #00ff41;
 }
 </style>
 </head>
@@ -66,7 +66,7 @@ button {
 
     <div class="panel">
         <b>Signal Level:</b> <span id="signal">-</span><br>
-        <b>Analysis Quality:</b> <span id="quality">-</span>
+        <b>Confidence:</b> <span id="quality">-</span>
     </div>
 
     <div class="panel">
@@ -97,6 +97,9 @@ async function run() {
 
     const input = document.getElementById("input").value;
 
+    // reset error
+    document.getElementById("error").innerText = "";
+
     const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -105,6 +108,9 @@ async function run() {
 
     const data = await res.json();
 
+    // -----------------------
+    // HARD FAILURE HANDLING
+    // -----------------------
     if (!data.ok) {
         document.getElementById("error").innerText =
             data.error || "unknown_error";
@@ -119,6 +125,17 @@ async function run() {
     document.getElementById("signal").innerText =
         report.meta?.signal_level ?? "-";
 
+    document.getElementById("quality").innerText =
+        report.influence?.confidence ?? "-";
+
+    // -----------------------
+    // INTENSITY
+    // -----------------------
+    const intensity = report.influence?.persuasion_intensity ?? 0;
+
+    document.getElementById("intensity").style.width =
+        Math.min(100, intensity * 100) + "%";
+
     // -----------------------
     // SUMMARY
     // -----------------------
@@ -126,44 +143,10 @@ async function run() {
         report.summary?.brief ?? "-";
 
     // -----------------------
-    // PERSUASION
-    // -----------------------
-    const intensity = report.influence?.persuasion_intensity ?? 0;
-    document.getElementById("intensity").style.width =
-        Math.min(100, intensity * 100) + "%";
-
-    // -----------------------
     // FRAMING
     // -----------------------
     document.getElementById("framing").innerText =
         JSON.stringify(report.framing ?? {}, null, 2);
-
-    // -----------------------
-    // QUALITY (optional display fallback)
-    // -----------------------
-    document.getElementById("quality").innerText =
-        report.influence?.confidence ?? "-";
-}
-
-    // METRICS
-    document.getElementById("signal").innerText =
-        data.meta?.signal_level ?? "-";
-
-    document.getElementById("quality").innerText =
-        data.meta?.analysis_quality ?? "-";
-
-    // INTENSITY
-    const intensity = data.content?.persuasion_intensity ?? 0;
-    document.getElementById("intensity").style.width =
-        Math.min(100, intensity * 100) + "%";
-
-    // SUMMARY (FIXED + RESTORED)
-    document.getElementById("summary").innerText =
-        data.content?.summary ?? "-";
-
-    // FRAMING
-    document.getElementById("framing").innerText =
-        JSON.stringify(data.content?.framing ?? {}, null, 2);
 }
 
 </script>
