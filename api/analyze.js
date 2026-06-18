@@ -11,36 +11,53 @@ function json(res, status, payload) {
     res.end(JSON.stringify(payload));
 }
 
-function isValidText(text) {
-    return typeof text === "string" && text.trim().split(/\s+/).length >= 80;
-}
-
 export default async function handler(req, res) {
     try {
         if (req.method !== "POST") {
             return json(res, 405, { ok: false, error: "method_not_allowed" });
         }
 
-        let input = req.body?.input;
+        // ---------------- SAFE BODY PARSE ----------------
+        let input = "";
 
-        if (!input || typeof input !== "string") {
-            return json(res, 400, { ok: false, error: "missing_input" });
+        try {
+            input = req.body?.input ?? "";
+        } catch (e) {
+            return json(res, 400, {
+                ok: false,
+                error: "invalid_body",
+                detail: String(e.message)
+            });
         }
 
-        input = input.trim();
-        const type = classifyInput(input);
+        if (typeof input !== "string" || !input.trim()) {
+            return json(res, 400, {
+                ok: false,
+                error: "missing_input"
+            });
+        }
 
+        const type = classifyInput(input);
         let text = normalizeInput(input);
+
+        const debug = {
+            input_type: type,
+            steps: []
+        };
 
         const layers = [];
 
-        // ---------------- WEB ----------------
+        // ---------------- WEB LAYER ----------------
         if (type === "web") {
             let extracted = null;
 
             try {
                 extracted = await extractWebpageText(input);
-            } catch (e) {
+            } catch (err) {
+                debug.steps.push({
+                    stage: "web_extraction_crash",
+                    error: String(err.message || err)
+                });
                 extracted = null;
             }
 
@@ -54,44 +71,62 @@ export default async function handler(req, res) {
                 return json(res, 200, {
                     ok: false,
                     error: "web_extraction_failed",
-                    meta: { source_type: "web" },
-                    layers
+                    layers,
+                    debug
                 });
             }
 
             text = extracted;
         }
 
+        // ---------------- HARD SAFETY CHECK ----------------
+        if (!text || typeof text !== "string") {
+            return json(res, 500, {
+                ok: false,
+                error: "invalid_text_after_normalization",
+                debug
+            });
+        }
+
+        // ---------------- SIGNAL ----------------
+        const signal = signalLevel(text);
+
         // ---------------- FUSION ----------------
-        const fused = fuseEvidence([
-            { layer: type, status: "hit", weight: 1, text }
-        ]);
+        let fused;
 
-        const canonicalText = (fused.text || "").trim();
+        try {
+            fused = fuseEvidence([
+                { layer: type, status: "hit", weight: 1, text }
+            ]);
+        } catch (err) {
+            return json(res, 500, {
+                ok: false,
+                error: "fusion_crash",
+                message: String(err.message || err),
+                debug
+            });
+        }
 
-        if (!isValidText(canonicalText)) {
+        const canonicalText = (fused?.text || "").trim();
+
+        if (!canonicalText) {
             return json(res, 200, {
                 ok: false,
-                error: "insufficient_text",
-                meta: { source_type: type },
-                layers: fused.layers
+                error: "empty_canonical_text",
+                debug
             });
         }
 
         // ---------------- ANALYSIS ----------------
-        const signal = signalLevel(canonicalText);
         const rhetoric = rhetoricalScan(canonicalText);
         const framing = framingScan(canonicalText);
 
         const analysis_quality = computeAnalysisQuality({
-            layers: fused.layers,
+            layers: fused.layers || [],
             signalLevel: signal,
             rhetoric,
             framing
         });
-
-        // deterministic summary (no brittle splits)
-        const summary = canonicalText.slice(0, 800);
 
         return json(res, 200, {
             ok: true,
@@ -103,30 +138,26 @@ export default async function handler(req, res) {
             },
 
             content: {
-                summary,
-                persuasion_intensity: rhetoric.persuasion_score,
-                emotional_vector: {
-                    fear: 0,
-                    urgency: 0,
-                    hope: 0,
-                    anger: 0
-                },
+                summary: canonicalText.slice(0, 800),
+                persuasion_intensity: rhetoric?.persuasion_score ?? 0,
                 framing,
-                techniques: rhetoric.signals
+                techniques: rhetoric?.signals ?? []
             },
 
-            layers: fused.layers,
+            layers: fused.layers || [],
 
             debug: {
-                text_length: canonicalText.length
+                text_length: canonicalText.length,
+                input_type: type
             }
         });
 
     } catch (err) {
         return json(res, 500, {
             ok: false,
-            error: "internal_error",
-            message: String(err?.message || err)
+            error: "internal_server_error",
+            message: String(err?.message || err),
+            stack: process.env.NODE_ENV === "development" ? err?.stack : undefined
         });
     }
 }
