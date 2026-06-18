@@ -1,5 +1,5 @@
 import { classifyInput, normalizeInput, signalLevel } from "../lib/ingestion.js";
-import { extractWebpageText } from "../lib/layers/webpage.js";
+import { extractByType } from "../lib/layers/router.js";
 import { rhetoricalScan } from "../lib/rhetoric.js";
 import { framingScan } from "../lib/framing.js";
 import { computeAnalysisQuality } from "../lib/confidence.js";
@@ -31,18 +31,14 @@ export default async function handler(req, res) {
 
         const layers = [];
 
-        // ---------------- WEB ----------------
-        if (type === "web") {
-            let extracted = null;
-
-            try {
-                extracted = await extractWebpageText(input);
-            } catch (e) {
-                extracted = null;
-            }
+        // -----------------------------
+        // EXTRACTION LAYER
+        // -----------------------------
+        if (type !== "text") {
+            const extracted = await extractByType(type, input);
 
             layers.push({
-                layer: "webpage",
+                layer: type,
                 status: extracted ? "hit" : "miss",
                 weight: extracted ? 1 : 0.2
             });
@@ -50,7 +46,7 @@ export default async function handler(req, res) {
             if (!extracted) {
                 return safeJson(res, {
                     ok: false,
-                    error: "web_extraction_failed",
+                    error: "extraction_failed",
                     meta: { source_type: type },
                     layers
                 });
@@ -59,7 +55,9 @@ export default async function handler(req, res) {
             text = extracted;
         }
 
-        // ---------------- SIGNAL ----------------
+        // -----------------------------
+        // SIGNAL
+        // -----------------------------
         const signal = signalLevel(text);
 
         const fused = fuseEvidence([
@@ -72,12 +70,17 @@ export default async function handler(req, res) {
             return safeJson(res, {
                 ok: false,
                 error: "insufficient_text",
-                meta: { source_type: type, signal_level: signal },
+                meta: {
+                    source_type: type,
+                    signal_level: signal
+                },
                 layers: fused.layers || []
             });
         }
 
-        // ---------------- ANALYSIS ----------------
+        // -----------------------------
+        // ANALYSIS
+        // -----------------------------
         const rhetoric = rhetoricalScan(canonicalText);
         const framing = framingScan(canonicalText);
 
@@ -88,7 +91,11 @@ export default async function handler(req, res) {
             framing
         });
 
-        const summary = canonicalText.split(". ").slice(0, 4).join(". ").slice(0, 800);
+        const summary = canonicalText
+            .split(". ")
+            .slice(0, 4)
+            .join(". ")
+            .slice(0, 800);
 
         return safeJson(res, {
             ok: true,
@@ -123,7 +130,7 @@ export default async function handler(req, res) {
         return safeJson(res, {
             ok: false,
             error: "internal_server_error",
-            message: err?.message || "unknown"
+            message: err?.message || "unknown_error"
         }, 500);
     }
 }
