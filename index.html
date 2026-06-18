@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -13,10 +13,7 @@ body {
     font-family:monospace;
 }
 
-#ui {
-    width:420px;
-    padding:20px;
-}
+#ui { width:420px; padding:20px; }
 
 textarea {
     width:100%;
@@ -24,7 +21,6 @@ textarea {
     background:#000;
     color:#00ff41;
     border:1px solid #333;
-    padding:10px;
 }
 
 button {
@@ -33,7 +29,6 @@ button {
     margin-top:10px;
     background:#00ff41;
     border:none;
-    font-weight:bold;
     cursor:pointer;
 }
 
@@ -44,94 +39,85 @@ button {
     border:1px solid #333;
 }
 
-.bar {
-    height:8px;
-    background:#222;
-    margin:6px 0;
-}
-
-.bar > div {
-    height:100%;
-    background:#00ff41;
-}
+.bar { height:8px; background:#222; margin-top:6px; }
+.bar > div { height:100%; background:#00ff41; width:0%; }
 </style>
 </head>
 
 <body>
 
 <div id="ui">
-
     <textarea id="input"></textarea>
     <button onclick="run()">ANALYZE</button>
 
     <div class="panel">
-        <b>Signal Level:</b> <span id="signal">-</span><br>
-        <b>Analysis Quality:</b> <span id="quality">-</span>
+        Signal: <span id="signal">-</span><br/>
+        Quality: <span id="quality">-</span>
     </div>
 
     <div class="panel">
-        <b>Persuasion Intensity</b>
+        Persuasion
         <div class="bar"><div id="intensity"></div></div>
     </div>
 
     <div class="panel">
-        <b>Final Summary</b>
+        Summary
         <div id="summary"></div>
     </div>
 
     <div class="panel">
-        <b>Framing</b>
+        Framing
         <pre id="framing"></pre>
     </div>
 
     <div class="panel">
-        <b>Error</b>
+        Error
         <pre id="error"></pre>
     </div>
-
 </div>
 
 <script>
-
 async function run() {
-
     const input = document.getElementById("input").value;
 
-    const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input })
-    });
+    try {
+        const res = await fetch("/api/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ input })
+        });
 
-    const data = await res.json();
+        const data = await res.json();
 
-    if (!data.ok) {
+        if (!data.ok) {
+            document.getElementById("error").innerText =
+                data.error || "unknown_error";
+            return;
+        }
+
+        document.getElementById("error").innerText = "";
+
+        document.getElementById("signal").innerText =
+            data.meta.signal_level;
+
+        document.getElementById("quality").innerText =
+            data.meta.analysis_quality;
+
+        const intensity = data.content.persuasion_intensity || 0;
+        document.getElementById("intensity").style.width =
+            Math.min(100, intensity * 100) + "%";
+
+        document.getElementById("summary").innerText =
+            data.content.summary || "-";
+
+        document.getElementById("framing").innerText =
+            JSON.stringify(data.content.framing, null, 2);
+
+    } catch (err) {
         document.getElementById("error").innerText =
-            data.error || "unknown_error";
-        return;
+            "CLIENT_ERROR: " + err.message;
     }
-
-    // METRICS
-    document.getElementById("signal").innerText =
-        data.meta?.signal_level ?? "-";
-
-    document.getElementById("quality").innerText =
-        data.meta?.analysis_quality ?? "-";
-
-    // INTENSITY
-    const intensity = data.content?.persuasion_intensity ?? 0;
-    document.getElementById("intensity").style.width =
-        Math.min(100, intensity * 100) + "%";
-
-    // SUMMARY (FIXED + RESTORED)
-    document.getElementById("summary").innerText =
-        data.content?.summary ?? "-";
-
-    // FRAMING
-    document.getElementById("framing").innerText =
-        JSON.stringify(data.content?.framing ?? {}, null, 2);
 }
-
 </script>
 
 </body>
