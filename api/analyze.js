@@ -5,59 +5,41 @@ import { framingScan } from "../lib/framing.js";
 import { computeAnalysisQuality } from "../lib/confidence.js";
 import { fuseEvidence } from "../lib/fusion.js";
 
-function json(res, status, payload) {
-    res.statusCode = status;
+function safeJson(res, payload, status = 200) {
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify(payload));
+    return res.status(status).json(payload);
+}
+
+function isValidText(text) {
+    return typeof text === "string" && text.trim().split(/\s+/).length >= 80;
 }
 
 export default async function handler(req, res) {
     try {
         if (req.method !== "POST") {
-            return json(res, 405, { ok: false, error: "method_not_allowed" });
+            return safeJson(res, { ok: false, error: "method_not_allowed" }, 405);
         }
 
-        // ---------------- SAFE BODY PARSE ----------------
-        let input = "";
+        const input = req.body?.input;
 
-        try {
-            input = req.body?.input ?? "";
-        } catch (e) {
-            return json(res, 400, {
-                ok: false,
-                error: "invalid_body",
-                detail: String(e.message)
-            });
-        }
-
-        if (typeof input !== "string" || !input.trim()) {
-            return json(res, 400, {
-                ok: false,
-                error: "missing_input"
-            });
+        if (!input || typeof input !== "string") {
+            return safeJson(res, { ok: false, error: "missing_input" }, 400);
         }
 
         const type = classifyInput(input);
         let text = normalizeInput(input);
 
-        const debug = {
-            input_type: type,
-            steps: []
-        };
-
         const layers = [];
 
-        // ---------------- WEB LAYER ----------------
+        // -------------------------
+        // WEB EXTRACTION
+        // -------------------------
         if (type === "web") {
             let extracted = null;
 
             try {
                 extracted = await extractWebpageText(input);
-            } catch (err) {
-                debug.steps.push({
-                    stage: "web_extraction_crash",
-                    error: String(err.message || err)
-                });
+            } catch (e) {
                 extracted = null;
             }
 
@@ -68,67 +50,77 @@ export default async function handler(req, res) {
             });
 
             if (!extracted) {
-                return json(res, 200, {
+                return safeJson(res, {
                     ok: false,
                     error: "web_extraction_failed",
-                    layers,
-                    debug
+                    meta: {
+                        source_type: "web"
+                    },
+                    layers
                 });
             }
 
             text = extracted;
         }
 
-        // ---------------- HARD SAFETY CHECK ----------------
-        if (!text || typeof text !== "string") {
-            return json(res, 500, {
-                ok: false,
-                error: "invalid_text_after_normalization",
-                debug
-            });
-        }
-
-        // ---------------- SIGNAL ----------------
+        // -------------------------
+        // SIGNAL
+        // -------------------------
         const signal = signalLevel(text);
 
-        // ---------------- FUSION ----------------
         let fused;
-
         try {
             fused = fuseEvidence([
-                { layer: type, status: "hit", weight: 1, text }
+                {
+                    layer: type,
+                    status: "hit",
+                    weight: 1,
+                    text
+                }
             ]);
-        } catch (err) {
-            return json(res, 500, {
+        } catch (e) {
+            return safeJson(res, {
                 ok: false,
                 error: "fusion_crash",
-                message: String(err.message || err),
-                debug
+                message: e.message,
+                meta: { source_type: type, signal_level: signal }
             });
         }
 
-        const canonicalText = (fused?.text || "").trim();
+        const canonicalText = fused?.text || "";
 
-        if (!canonicalText) {
-            return json(res, 200, {
+        if (!isValidText(canonicalText)) {
+            return safeJson(res, {
                 ok: false,
-                error: "empty_canonical_text",
-                debug
+                error: "insufficient_text",
+                meta: {
+                    source_type: type,
+                    signal_level: signal
+                },
+                layers: fused?.layers || []
             });
         }
 
-        // ---------------- ANALYSIS ----------------
+        // -------------------------
+        // ANALYSIS
+        // -------------------------
         const rhetoric = rhetoricalScan(canonicalText);
         const framing = framingScan(canonicalText);
 
         const analysis_quality = computeAnalysisQuality({
-            layers: fused.layers || [],
+            layers: fused.layers,
             signalLevel: signal,
             rhetoric,
             framing
         });
 
-        return json(res, 200, {
+        // -------------------------
+        // SUMMARY (robust fallback)
+        // -------------------------
+        const sentences = canonicalText.split(/(?<=[.!?])\s+/);
+        const summary = sentences.slice(0, 5).join(" ").slice(0, 900);
+
+        return safeJson(res, {
             ok: true,
 
             meta: {
@@ -138,7 +130,7 @@ export default async function handler(req, res) {
             },
 
             content: {
-                summary: canonicalText.slice(0, 800),
+                summary: summary || "No summary available.",
                 persuasion_intensity: rhetoric?.persuasion_score ?? 0,
                 framing,
                 techniques: rhetoric?.signals ?? []
@@ -147,17 +139,15 @@ export default async function handler(req, res) {
             layers: fused.layers || [],
 
             debug: {
-                text_length: canonicalText.length,
-                input_type: type
+                text_length: canonicalText.length
             }
         });
 
     } catch (err) {
-        return json(res, 500, {
+        return safeJson(res, {
             ok: false,
             error: "internal_server_error",
-            message: String(err?.message || err),
-            stack: process.env.NODE_ENV === "development" ? err?.stack : undefined
-        });
+            message: err?.message || "unknown_error"
+        }, 500);
     }
 }
