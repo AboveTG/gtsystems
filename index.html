@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -13,7 +13,10 @@ body {
     font-family:monospace;
 }
 
-#ui { width:420px; padding:20px; }
+#ui {
+    width:420px;
+    padding:20px;
+}
 
 textarea {
     width:100%;
@@ -21,6 +24,7 @@ textarea {
     background:#000;
     color:#00ff41;
     border:1px solid #333;
+    padding:10px;
 }
 
 button {
@@ -29,6 +33,7 @@ button {
     margin-top:10px;
     background:#00ff41;
     border:none;
+    font-weight:bold;
     cursor:pointer;
 }
 
@@ -39,15 +44,25 @@ button {
     border:1px solid #333;
 }
 
-.bar { height:8px; background:#222; margin-top:6px; }
-.bar > div { height:100%; background:#00ff41; width:0%; }
+.bar {
+    height:8px;
+    background:#222;
+    margin-top:6px;
+}
+
+.bar > div {
+    height:100%;
+    background:#00ff41;
+    width:0%;
+}
 </style>
 </head>
 
 <body>
 
 <div id="ui">
-    <textarea id="input"></textarea>
+
+    <textarea id="input" placeholder="Paste URL, text, or video link"></textarea>
     <button onclick="run()">ANALYZE</button>
 
     <div class="panel">
@@ -74,49 +89,51 @@ button {
         Error
         <pre id="error"></pre>
     </div>
+
 </div>
 
 <script>
 async function run() {
     const input = document.getElementById("input").value;
 
+    const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input })
+    });
+
+    let data;
     try {
-        const res = await fetch("/api/analyze", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ input })
-        });
-
-        const data = await res.json();
-
-        if (!data.ok) {
-            document.getElementById("error").innerText =
-                data.error || "unknown_error";
-            return;
-        }
-
-        document.getElementById("error").innerText = "";
-
-        document.getElementById("signal").innerText =
-            data.meta.signal_level;
-
-        document.getElementById("quality").innerText =
-            data.meta.analysis_quality;
-
-        const intensity = data.content.persuasion_intensity || 0;
-        document.getElementById("intensity").style.width =
-            Math.min(100, intensity * 100) + "%";
-
-        document.getElementById("summary").innerText =
-            data.content.summary || "-";
-
-        document.getElementById("framing").innerText =
-            JSON.stringify(data.content.framing, null, 2);
-
-    } catch (err) {
+        data = await res.json();
+    } catch (e) {
         document.getElementById("error").innerText =
-            "CLIENT_ERROR: " + err.message;
+            "INVALID_JSON_RESPONSE";
+        return;
     }
+
+    if (!data.ok) {
+        document.getElementById("error").innerText =
+            data.error || "unknown_error";
+        return;
+    }
+
+    document.getElementById("error").innerText = "";
+
+    document.getElementById("signal").innerText =
+        data.meta?.signal_level ?? "-";
+
+    document.getElementById("quality").innerText =
+        data.meta?.analysis_quality ?? "-";
+
+    const intensity = data.content?.persuasion_intensity ?? 0;
+    document.getElementById("intensity").style.width =
+        Math.min(100, intensity * 100) + "%";
+
+    document.getElementById("summary").innerText =
+        data.content?.summary ?? "-";
+
+    document.getElementById("framing").innerText =
+        JSON.stringify(data.content?.framing ?? {}, null, 2);
 }
 </script>
 
