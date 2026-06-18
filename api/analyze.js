@@ -5,28 +5,31 @@ import { framingScan } from "../lib/framing.js";
 import { computeAnalysisQuality } from "../lib/confidence.js";
 import { fuseEvidence } from "../lib/fusion.js";
 
-function safeJson(res, obj, status = 200) {
+function json(res, status, payload) {
+    res.statusCode = status;
     res.setHeader("Content-Type", "application/json");
-    return res.status(status).json(obj);
+    res.end(JSON.stringify(payload));
 }
 
-function isValid(text) {
-    return typeof text === "string" && text.split(/\s+/).length >= 60;
+function isValidText(text) {
+    return typeof text === "string" && text.trim().split(/\s+/).length >= 80;
 }
 
 export default async function handler(req, res) {
     try {
         if (req.method !== "POST") {
-            return safeJson(res, { ok: false, error: "method_not_allowed" }, 405);
+            return json(res, 405, { ok: false, error: "method_not_allowed" });
         }
 
-        const input = req.body?.input;
+        let input = req.body?.input;
 
         if (!input || typeof input !== "string") {
-            return safeJson(res, { ok: false, error: "missing_input" }, 400);
+            return json(res, 400, { ok: false, error: "missing_input" });
         }
 
+        input = input.trim();
         const type = classifyInput(input);
+
         let text = normalizeInput(input);
 
         const layers = [];
@@ -48,9 +51,10 @@ export default async function handler(req, res) {
             });
 
             if (!extracted) {
-                return safeJson(res, {
+                return json(res, 200, {
                     ok: false,
                     error: "web_extraction_failed",
+                    meta: { source_type: "web" },
                     layers
                 });
             }
@@ -58,30 +62,26 @@ export default async function handler(req, res) {
             text = extracted;
         }
 
-        // ---------------- SIGNAL ----------------
-        const signal = signalLevel(text);
-
+        // ---------------- FUSION ----------------
         const fused = fuseEvidence([
-            {
-                layer: type,
-                status: "hit",
-                weight: 1,
-                text
-            }
+            { layer: type, status: "hit", weight: 1, text }
         ]);
 
-        const canonical = fused?.text || "";
+        const canonicalText = (fused.text || "").trim();
 
-        if (!isValid(canonical)) {
-            return safeJson(res, {
+        if (!isValidText(canonicalText)) {
+            return json(res, 200, {
                 ok: false,
                 error: "insufficient_text",
-                signal_level: signal
+                meta: { source_type: type },
+                layers: fused.layers
             });
         }
 
-        const rhetoric = rhetoricalScan(canonical);
-        const framing = framingScan(canonical);
+        // ---------------- ANALYSIS ----------------
+        const signal = signalLevel(canonicalText);
+        const rhetoric = rhetoricalScan(canonicalText);
+        const framing = framingScan(canonicalText);
 
         const analysis_quality = computeAnalysisQuality({
             layers: fused.layers,
@@ -90,7 +90,10 @@ export default async function handler(req, res) {
             framing
         });
 
-        return safeJson(res, {
+        // deterministic summary (no brittle splits)
+        const summary = canonicalText.slice(0, 800);
+
+        return json(res, 200, {
             ok: true,
 
             meta: {
@@ -100,30 +103,30 @@ export default async function handler(req, res) {
             },
 
             content: {
-                summary: canonical.slice(0, 700),
-                persuasion_intensity: rhetoric.persuasion_score ?? 0,
-                emotional_vector: rhetoric.emotional_vector ?? {
+                summary,
+                persuasion_intensity: rhetoric.persuasion_score,
+                emotional_vector: {
                     fear: 0,
                     urgency: 0,
                     hope: 0,
                     anger: 0
                 },
                 framing,
-                techniques: rhetoric.signals ?? []
+                techniques: rhetoric.signals
             },
 
             layers: fused.layers,
 
             debug: {
-                text_length: canonical.length
+                text_length: canonicalText.length
             }
         });
 
     } catch (err) {
-        return safeJson(res, {
+        return json(res, 500, {
             ok: false,
-            error: "internal_server_error",
-            message: String(err)
-        }, 500);
+            error: "internal_error",
+            message: String(err?.message || err)
+        });
     }
 }
