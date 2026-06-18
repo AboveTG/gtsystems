@@ -6,15 +6,12 @@ import { computeAnalysisQuality } from "../lib/confidence.js";
 import { fuseEvidence } from "../lib/fusion.js";
 
 function isValidText(text) {
-    return (
-        typeof text === "string" &&
-        text.trim().split(/\s+/).length >= 80
-    );
+    return typeof text === "string" && text.trim().split(/\s+/).length >= 80;
 }
 
-function safeJson(res, payload, status = 200) {
+function safeJson(res, obj, status = 200) {
     res.setHeader("Content-Type", "application/json");
-    return res.status(status).json(payload);
+    return res.status(status).json(obj);
 }
 
 export default async function handler(req, res) {
@@ -25,24 +22,22 @@ export default async function handler(req, res) {
 
         const input = req.body?.input;
 
-        if (!input || typeof input !== "string" || !input.trim()) {
+        if (typeof input !== "string" || !input.trim()) {
             return safeJson(res, { ok: false, error: "missing_input" }, 400);
         }
 
         const type = classifyInput(input);
-        let text = normalizeInput(input, type);
+        let text = normalizeInput(input);
 
         const layers = [];
 
-        // -----------------------------
-        // WEB EXTRACTION
-        // -----------------------------
+        // ---------------- WEB ----------------
         if (type === "web") {
             let extracted = null;
 
             try {
                 extracted = await extractWebpageText(input);
-            } catch {
+            } catch (e) {
                 extracted = null;
             }
 
@@ -64,18 +59,11 @@ export default async function handler(req, res) {
             text = extracted;
         }
 
-        // -----------------------------
-        // SIGNAL
-        // -----------------------------
+        // ---------------- SIGNAL ----------------
         const signal = signalLevel(text);
 
         const fused = fuseEvidence([
-            {
-                layer: type,
-                status: "hit",
-                weight: 1,
-                text
-            }
+            { layer: type, status: "hit", weight: 1, text }
         ]);
 
         const canonicalText = (fused?.text || "").trim();
@@ -89,9 +77,7 @@ export default async function handler(req, res) {
             });
         }
 
-        // -----------------------------
-        // ANALYSIS
-        // -----------------------------
+        // ---------------- ANALYSIS ----------------
         const rhetoric = rhetoricalScan(canonicalText);
         const framing = framingScan(canonicalText);
 
@@ -102,14 +88,7 @@ export default async function handler(req, res) {
             framing
         });
 
-        // -----------------------------
-        // FINAL SUMMARY (RESTORED)
-        // -----------------------------
-        const summary = canonicalText
-            .split(". ")
-            .slice(0, 5)
-            .join(". ")
-            .slice(0, 800);
+        const summary = canonicalText.split(". ").slice(0, 4).join(". ").slice(0, 800);
 
         return safeJson(res, {
             ok: true,
@@ -121,7 +100,7 @@ export default async function handler(req, res) {
             },
 
             content: {
-                summary,   // ✅ RESTORED FINAL SUMMARY
+                summary,
                 persuasion_intensity: rhetoric?.persuasion_score ?? 0,
                 emotional_vector: {
                     fear: 0,
@@ -137,16 +116,14 @@ export default async function handler(req, res) {
 
             debug: {
                 text_length: canonicalText.length
-            },
-
-            error: null
+            }
         });
 
     } catch (err) {
         return safeJson(res, {
             ok: false,
             error: "internal_server_error",
-            message: err?.message || "unknown_error"
+            message: err?.message || "unknown"
         }, 500);
     }
 }
