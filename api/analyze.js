@@ -12,7 +12,7 @@ function safeJson(res, payload, status = 200) {
 }
 
 function isValidText(text) {
-    return typeof text === "string" && text.trim().split(/\s+/).length >= 80;
+    return typeof text === "string" && text.trim().split(/\s+/).length >= 60;
 }
 
 export default async function handler(req, res) {
@@ -30,7 +30,7 @@ export default async function handler(req, res) {
         const type = classifyInput(input);
         let text = normalizeInput(input);
 
-        const layers = [];
+        let layers = [];
 
         // -------------------------
         // WEB EXTRACTION
@@ -40,12 +40,12 @@ export default async function handler(req, res) {
 
             try {
                 extracted = await extractWebpageText(input);
-            } catch (e) {
+            } catch (err) {
                 extracted = null;
             }
 
             layers.push({
-                layer: "web",
+                layer: "webpage",
                 status: extracted ? "hit" : "miss",
                 weight: extracted ? 1 : 0.2
             });
@@ -54,9 +54,7 @@ export default async function handler(req, res) {
                 return safeJson(res, {
                     ok: false,
                     error: "web_extraction_failed",
-                    meta: {
-                        source_type: "web"
-                    },
+                    meta: { source_type: type },
                     layers
                 });
             }
@@ -69,26 +67,16 @@ export default async function handler(req, res) {
         // -------------------------
         const signal = signalLevel(text);
 
-        let fused;
-        try {
-            fused = fuseEvidence([
-                {
-                    layer: type,
-                    status: "hit",
-                    weight: 1,
-                    text
-                }
-            ]);
-        } catch (e) {
-            return safeJson(res, {
-                ok: false,
-                error: "fusion_crash",
-                message: e.message,
-                meta: { source_type: type, signal_level: signal }
-            });
-        }
+        const fused = fuseEvidence([
+            {
+                layer: type,
+                status: "hit",
+                weight: 1,
+                text
+            }
+        ]);
 
-        const canonicalText = fused?.text || "";
+        const canonicalText = (fused?.text || "").trim();
 
         if (!isValidText(canonicalText)) {
             return safeJson(res, {
@@ -103,29 +91,26 @@ export default async function handler(req, res) {
         }
 
         // -------------------------
-        // ANALYSIS
+        // ANALYSIS CORE
         // -------------------------
         const rhetoric = rhetoricalScan(canonicalText);
         const framing = framingScan(canonicalText);
 
-        const report = buildReport({
-            text: canonicalText,
-            rhetoric,
-            framing
-        });
-
         const analysis_quality = computeAnalysisQuality({
-            layers: fused.layers,
+            layers: fused?.layers || [],
             signalLevel: signal,
             rhetoric,
             framing
         });
 
         // -------------------------
-        // SUMMARY (robust fallback)
+        // REPORT (SAFE)
         // -------------------------
-        const sentences = canonicalText.split(/(?<=[.!?])\s+/);
-        const summary = sentences.slice(0, 5).join(" ").slice(0, 900);
+        const report = buildReport({
+            text: canonicalText,
+            rhetoric,
+            framing
+        });
 
         return safeJson(res, {
             ok: true,
@@ -136,14 +121,7 @@ export default async function handler(req, res) {
                 analysis_quality
             },
 
-            content: {
-                summary: summary || "No summary available.",
-                persuasion_intensity: rhetoric?.persuasion_score ?? 0,
-                framing,
-                techniques: rhetoric?.signals ?? []
-            },
-
-            layers: fused.layers || [],
+            report,
 
             debug: {
                 text_length: canonicalText.length
@@ -151,19 +129,12 @@ export default async function handler(req, res) {
         });
 
     } catch (err) {
-            return safeJson(res, {
+        console.error("ANALYZE CRASH:", err);
 
-        ok: true,
-
-        meta: {
-            source_type: type,
-            signal_level: signal,
-            analysis_quality
-        },
-
-        report,
-
-        debug: {
-            text_length: canonicalText.length
-        }
-    });
+        return safeJson(res, {
+            ok: false,
+            error: "internal_server_error",
+            message: err?.message || "unknown_error"
+        }, 500);
+    }
+}
