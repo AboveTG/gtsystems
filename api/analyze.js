@@ -4,6 +4,7 @@ import { rhetoricalScan } from "../lib/rhetoric.js";
 import { framingScan } from "../lib/framing.js";
 import { computeAnalysisQuality } from "../lib/confidence.js";
 import { fuseEvidence } from "../lib/fusion.js";
+import { buildReport } from "../lib/report.js";
 
 function safeJson(res, payload, status = 200) {
     res.setHeader("Content-Type", "application/json");
@@ -107,6 +108,12 @@ export default async function handler(req, res) {
         const rhetoric = rhetoricalScan(canonicalText);
         const framing = framingScan(canonicalText);
 
+        const report = buildReport({
+            text: canonicalText,
+            rhetoric,
+            framing
+        });
+
         const analysis_quality = computeAnalysisQuality({
             layers: fused.layers,
             signalLevel: signal,
@@ -144,10 +151,19 @@ export default async function handler(req, res) {
         });
 
     } catch (err) {
-        return safeJson(res, {
-            ok: false,
-            error: "internal_server_error",
-            message: err?.message || "unknown_error"
-        }, 500);
-    }
-}
+            return safeJson(res, {
+
+        ok: true,
+
+        meta: {
+            source_type: type,
+            signal_level: signal,
+            analysis_quality
+        },
+
+        report,
+
+        debug: {
+            text_length: canonicalText.length
+        }
+    });
