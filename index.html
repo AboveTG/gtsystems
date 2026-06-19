@@ -1,60 +1,87 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Ground Truth Systems</title>
 
 <style>
-body {
+
+body{
     margin:0;
     background:#0a0a0a;
     color:#e0e0e0;
     font-family:monospace;
 }
 
-#ui {
-    width:420px;
+#ui{
+    max-width:900px;
+    margin:auto;
     padding:20px;
 }
 
-textarea {
+textarea{
     width:100%;
-    height:120px;
+    height:140px;
     background:#000;
     color:#00ff41;
     border:1px solid #333;
     padding:10px;
+    resize:vertical;
 }
 
-button {
+button{
     width:100%;
     padding:12px;
     margin-top:10px;
     background:#00ff41;
+    color:#000;
     border:none;
     font-weight:bold;
     cursor:pointer;
 }
 
-.panel {
+.panel{
     margin-top:12px;
     background:#111;
-    padding:10px;
     border:1px solid #333;
+    padding:12px;
 }
 
-.bar {
-    height:8px;
+.bar{
+    height:10px;
     background:#222;
-    margin-top:6px;
+    margin-top:8px;
 }
 
-.bar > div {
+.bar > div{
     height:100%;
     background:#00ff41;
     width:0%;
 }
+
+pre{
+    white-space:pre-wrap;
+    word-wrap:break-word;
+}
+
+ul{
+    margin-top:6px;
+}
+
+h3{
+    margin-top:0;
+}
+
+#error{
+    color:#ff5555;
+}
+
+.success{
+    color:#00ff41;
+}
+
 </style>
 </head>
 
@@ -62,80 +89,206 @@ button {
 
 <div id="ui">
 
-    <textarea id="input" placeholder="Paste URL, text, or video link"></textarea>
+    <textarea
+        id="input"
+        placeholder="Paste text, article URL, YouTube URL, or PDF URL..."
+    ></textarea>
+
     <button onclick="run()">ANALYZE</button>
 
     <div class="panel">
-        Signal: <span id="signal">-</span><br/>
-        Quality: <span id="quality">-</span>
+        <b>Signal Level:</b>
+        <span id="signal">-</span>
+        <br>
+        <b>Analysis Quality:</b>
+        <span id="quality">-</span>
     </div>
 
     <div class="panel">
-        Persuasion
-        <div class="bar"><div id="intensity"></div></div>
+        <h3>Summary</h3>
+        <div id="summary">-</div>
     </div>
 
     <div class="panel">
-        Summary
-        <div id="summary"></div>
+        <h3>Primary Claim</h3>
+        <div id="claim">-</div>
     </div>
 
     <div class="panel">
-        Framing
-        <pre id="framing"></pre>
+        <h3>Persuasion Intensity</h3>
+
+        <div class="bar">
+            <div id="intensity"></div>
+        </div>
+
+        <div id="intensityText">-</div>
     </div>
 
     <div class="panel">
-        Error
+        <h3>Persuasion Techniques</h3>
+        <ul id="techniques"></ul>
+    </div>
+
+    <div class="panel">
+        <h3>Framing Analysis</h3>
+
+        <b>Primary Frame:</b>
+        <div id="frame">-</div>
+
+        <br>
+
+        <b>Explanation:</b>
+        <div id="frameExplanation">-</div>
+
+    </div>
+
+    <div class="panel">
+        <h3>Missing Perspectives</h3>
+        <ul id="missing"></ul>
+    </div>
+
+    <div class="panel">
+        <h3>Narrative Risk</h3>
+
+        <b>Level:</b>
+        <span id="riskLevel">-</span>
+
+        <br><br>
+
+        <div id="riskExplanation">-</div>
+    </div>
+
+    <div class="panel">
+        <h3>Debug</h3>
+        <pre id="debug"></pre>
+    </div>
+
+    <div class="panel">
+        <h3>Error</h3>
         <pre id="error"></pre>
     </div>
 
 </div>
 
 <script>
+
 async function run() {
-    const input = document.getElementById("input").value;
 
-    const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input })
-    });
-
-    let data;
-    try {
-        data = await res.json();
-    } catch (e) {
-        document.getElementById("error").innerText =
-            "INVALID_JSON_RESPONSE";
-        return;
-    }
-
-    if (!data.ok) {
-        document.getElementById("error").innerText =
-            data.error || "unknown_error";
-        return;
-    }
+    const input =
+        document.getElementById("input").value;
 
     document.getElementById("error").innerText = "";
 
-    document.getElementById("signal").innerText =
-        data.meta?.signal_level ?? "-";
+    try {
 
-    document.getElementById("quality").innerText =
-        data.meta?.analysis_quality ?? "-";
+        const res = await fetch("/api/analyze", {
+            method: "POST",
+            headers: {
+                "Content-Type":"application/json"
+            },
+            body: JSON.stringify({
+                input
+            })
+        });
 
-    const intensity = data.content?.persuasion_intensity ?? 0;
-    document.getElementById("intensity").style.width =
-        Math.min(100, intensity * 100) + "%";
+        const data = await res.json();
 
-    document.getElementById("summary").innerText =
-        data.content?.summary ?? "-";
+        if (!data.ok) {
 
-    document.getElementById("framing").innerText =
-        JSON.stringify(data.content?.framing ?? {}, null, 2);
+            document.getElementById("error").innerText =
+                data.error || "Unknown error";
+
+            return;
+        }
+
+        const report = data.report || {};
+
+        document.getElementById("signal").innerText =
+            data.meta?.signal_level ?? "-";
+
+        document.getElementById("quality").innerText =
+            data.meta?.analysis_quality ?? "-";
+
+        document.getElementById("summary").innerText =
+            report.summary || "-";
+
+        document.getElementById("claim").innerText =
+            report.primary_claim || "-";
+
+        const intensity =
+            report.persuasion?.intensity ?? 0;
+
+        document.getElementById("intensity").style.width =
+            Math.min(100, intensity * 100) + "%";
+
+        document.getElementById("intensityText").innerText =
+            Math.round(intensity * 100) + "%";
+
+        const techniques =
+            report.persuasion?.techniques || [];
+
+        const techniquesList =
+            document.getElementById("techniques");
+
+        techniquesList.innerHTML = "";
+
+        techniques.forEach(t => {
+
+            const li =
+                document.createElement("li");
+
+            li.textContent = t;
+
+            techniquesList.appendChild(li);
+        });
+
+        document.getElementById("frame").innerText =
+            report.framing?.primary_frame || "-";
+
+        document.getElementById("frameExplanation").innerText =
+            report.framing?.explanation || "-";
+
+        const missing =
+            report.framing?.missing_perspectives || [];
+
+        const missingList =
+            document.getElementById("missing");
+
+        missingList.innerHTML = "";
+
+        missing.forEach(m => {
+
+            const li =
+                document.createElement("li");
+
+            li.textContent = m;
+
+            missingList.appendChild(li);
+        });
+
+        document.getElementById("riskLevel").innerText =
+            report.narrative_risk?.level || "-";
+
+        document.getElementById("riskExplanation").innerText =
+            report.narrative_risk?.explanation || "-";
+
+        document.getElementById("debug").innerText =
+            JSON.stringify(
+                data.debug || {},
+                null,
+                2
+            );
+
+    }
+    catch(err){
+
+        document.getElementById("error").innerText =
+            err.message || "Request failed";
+    }
 }
+
 </script>
 
 </body>
 </html>
+```
