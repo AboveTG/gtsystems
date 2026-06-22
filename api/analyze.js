@@ -8,15 +8,7 @@ import { generateReport } from "../lib/report.js";
 
 function safeJson(res, payload, status = 200) {
     res.setHeader("Content-Type", "application/json");
-
-    try {
-        return res.status(status).json(payload);
-    } catch (e) {
-        return res.status(500).json({
-            ok: false,
-            error: "response_serialization_failed"
-        });
-    }
+    return res.status(status).json(payload);
 }
 
 function isValidText(text) {
@@ -40,7 +32,9 @@ export default async function handler(req, res) {
 
         const layers = [];
 
-        // ---------------- WEB ----------------
+        // -------------------------
+        // WEB EXTRACTION
+        // -------------------------
         if (type === "web") {
             let extracted = null;
 
@@ -51,7 +45,7 @@ export default async function handler(req, res) {
             }
 
             layers.push({
-                layer: "web",
+                layer: "webpage",
                 status: extracted ? "hit" : "miss",
                 weight: extracted ? 1 : 0.2
             });
@@ -60,10 +54,7 @@ export default async function handler(req, res) {
                 return safeJson(res, {
                     ok: false,
                     error: "web_extraction_failed",
-                    meta: {
-                        input_type: type,
-                        message: "Unable to extract readable article content"
-                    },
+                    meta: { source_type: type },
                     layers
                 });
             }
@@ -71,8 +62,9 @@ export default async function handler(req, res) {
             text = extracted;
         }
 
-        const signal = signalLevel(text);
-
+        // -------------------------
+        // FUSION
+        // -------------------------
         const fused = fuseEvidence([
             {
                 layer: type,
@@ -82,48 +74,58 @@ export default async function handler(req, res) {
             }
         ]);
 
-        const canonicalText = (fused?.text || "").trim();
+        const canonicalText = (fused.text || "").trim();
 
         if (!isValidText(canonicalText)) {
             return safeJson(res, {
                 ok: false,
-                error: "insufficient_content",
+                error: "insufficient_text",
                 meta: {
-                    input_type: type,
-                    input_strength: signal
-                }
+                    source_type: type,
+                    signal_level: signalLevel(canonicalText)
+                },
+                layers: fused.layers
             });
         }
 
+        // -------------------------
+        // ANALYSIS
+        // -------------------------
+        const signal = signalLevel(canonicalText);
         const rhetoric = rhetoricalScan(canonicalText);
         const framing = framingScan(canonicalText);
 
-        const confidence = computeAnalysisQuality({
+        const analysis_quality = computeAnalysisQuality({
             layers: fused.layers,
             signalLevel: signal,
             rhetoric,
             framing
         });
 
+        // -------------------------
+        // REPORT
+        // -------------------------
         const report = generateReport({
             text: canonicalText,
             sourceType: type,
             signalLevel: signal,
-            analysisQuality: confidence,
+            analysisQuality: analysis_quality,
             rhetoric,
             framing
         });
 
         return safeJson(res, {
             ok: true,
-
-            meta: {
-                input_type: type,
-                input_strength: signal,
-                confidence_score: confidence
+            meta: report.meta,
+            report: {
+                summary: report.summary,
+                influence: report.influence,
+                framing: report.framing,
+                conclusions: report.conclusions
             },
-
-            report
+            debug: {
+                text_length: canonicalText.length
+            }
         });
 
     } catch (err) {
