@@ -66,8 +66,8 @@ button {
 <button onclick="run()">ANALYZE</button>
 
 <div class="panel">
-    <b>Signal:</b> <span id="signal">-</span><br>
-    <b>Quality:</b> <span id="quality">-</span>
+    <b>Context Level:</b> <span id="signal">-</span><br>
+    <b>Reliability:</b> <span id="quality">-</span>
 </div>
 
 <div class="panel">
@@ -76,27 +76,17 @@ button {
 </div>
 
 <div class="panel">
-    <b>Primary Claim</b>
-    <div id="claim">-</div>
+    <b>Persuasion Tone</b>
+    <div id="persuasion">-</div>
 </div>
 
 <div class="panel">
-    <b>Persuasion</b>
-    <div class="bar"><div id="bar"></div></div>
-    <div id="percent"></div>
-</div>
-
-<div class="panel">
-    <b>Framing</b>
+    <b>Framing Structure</b>
     <pre id="framing"></pre>
 </div>
 
 <div class="panel">
-    <b>Risk</b>
-    <div id="risk"></div>
-</div>
-
-<div class="panel">
+    <b>Errors</b>
     <pre id="error"></pre>
 </div>
 
@@ -120,79 +110,52 @@ async function run() {
     let data;
 
     try {
-
         const res = await fetch("/api/analyze", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify({
-                input
-            })
+            body: JSON.stringify({ input })
         });
 
         const text = await res.text();
 
         try {
             data = JSON.parse(text);
-        }
-        catch {
-
+        } catch {
             document.getElementById("error").innerText =
-                "NON-JSON RESPONSE\n\n" +
-                text.substring(0, 5000);
-
+                "NON-JSON RESPONSE:\n\n" + text;
             return;
         }
 
-    }
-    catch (err) {
-
-        document.getElementById("error").innerText =
-            err.message;
-
+    } catch (err) {
+        document.getElementById("error").innerText = err.message;
         return;
     }
 
     if (!data.ok) {
-
         document.getElementById("error").innerText =
             data.error || "analysis_failed";
-
         return;
     }
 
-    const report =
-        data.report || {};
+    const meta = data.meta || {};
+    const content = data.content || {};
 
     document.getElementById("signal").innerText =
-    data.meta?.signal_strength ?? "-";
+        meta.signal?.label ?? "-";
 
-document.getElementById("quality").innerText =
-    data.meta?.analysis_quality ?? "-";
+    document.getElementById("quality").innerText =
+        meta.quality?.label ?? "-";
 
-document.getElementById("summary").innerText =
-    data.content?.summary ?? "-";
+    document.getElementById("summary").innerText =
+        content.summary ?? "-";
 
-document.getElementById("claim").innerText =
-    data.content?.framing?.primary ?? "-";
+    document.getElementById("persuasion").innerText =
+        content.persuasion?.interpretation ?? "-";
 
-const intensity =
-    data.content?.persuasion_score ?? 0;
-
-document.getElementById("bar").style.width =
-    Math.min(100, intensity * 100) + "%";
-
-document.getElementById("percent").innerText =
-    Math.round(intensity * 100) + "%";
-
-document.getElementById("framing").innerText =
-    JSON.stringify(data.content?.framing?.raw ?? {}, null, 2);
-
-    document.getElementById("risk").innerText =
-        report.narrative_risk
-            ? `${report.narrative_risk.level} - ${report.narrative_risk.explanation}`
-            : "-";
+    document.getElementById("framing").innerText =
+        JSON.stringify(content.framing ?? {}, null, 2);
 }
 
 </script>
