@@ -4,12 +4,7 @@ import { rhetoricalScan } from "../lib/rhetoric.js";
 import { framingScan } from "../lib/framing.js";
 import { computeAnalysisQuality } from "../lib/confidence.js";
 import { fuseEvidence } from "../lib/fusion.js";
-
-import {
-    interpretSignal,
-    interpretQuality,
-    interpretPersuasion
-} from "../lib/interpretation.js";
+import { generateReport } from "../lib/report.js";
 
 function safeJson(res, payload, status = 200) {
     res.setHeader("Content-Type", "application/json");
@@ -17,32 +12,25 @@ function safeJson(res, payload, status = 200) {
 }
 
 function isValidText(text) {
-    return typeof text === "string" &&
-        text.trim().split(/\s+/).length >= 60;
+    return typeof text === "string" && text.trim().split(/\s+/).length >= 60;
 }
 
 export default async function handler(req, res) {
     try {
         if (req.method !== "POST") {
-            return safeJson(res, {
-                ok: false,
-                error: "method_not_allowed"
-            }, 405);
+            return safeJson(res, { ok: false, error: "method_not_allowed" }, 405);
         }
 
         const input = req.body?.input;
 
-        if (!input || typeof input !== "string" || !input.trim()) {
-            return safeJson(res, {
-                ok: false,
-                error: "missing_input"
-            }, 400);
+        if (!input || typeof input !== "string") {
+            return safeJson(res, { ok: false, error: "missing_input" }, 400);
         }
 
         const type = classifyInput(input);
         let text = normalizeInput(input);
 
-        const layers = [];
+        let layers = [];
 
         // -------------------------
         // WEB EXTRACTION
@@ -66,7 +54,6 @@ export default async function handler(req, res) {
                 return safeJson(res, {
                     ok: false,
                     error: "web_extraction_failed",
-                    meta: { source_type: type },
                     layers
                 });
             }
@@ -88,17 +75,13 @@ export default async function handler(req, res) {
             }
         ]);
 
-        const canonicalText = (fused?.text || "").trim();
+        const canonicalText = fused.text?.trim() || "";
 
         if (!isValidText(canonicalText)) {
             return safeJson(res, {
                 ok: false,
                 error: "insufficient_text",
-                meta: {
-                    source_type: type,
-                    signal_level: signal
-                },
-                layers: fused?.layers || []
+                layers: fused.layers || []
             });
         }
 
@@ -108,58 +91,37 @@ export default async function handler(req, res) {
         const rhetoric = rhetoricalScan(canonicalText);
         const framing = framingScan(canonicalText);
 
-        const analysisQuality = computeAnalysisQuality({
-            layers: fused?.layers || [],
+        const analysis_quality = computeAnalysisQuality({
+            layers: fused.layers,
             signalLevel: signal,
             rhetoric,
             framing
         });
 
         // -------------------------
-        // RESPONSE (HUMAN-READABLE LAYER)
+        // REPORT
         // -------------------------
+        const report = generateReport({
+            text: canonicalText,
+            sourceType: type,
+            signalLevel: signal,
+            analysisQuality: analysis_quality,
+            rhetoric,
+            framing
+        });
 
         return safeJson(res, {
             ok: true,
-
-            meta: {
-                signal: {
-                    value: signal,
-                    ...interpretSignal(signal)
-                },
-                quality: {
-                    value: analysisQuality,
-                    ...interpretQuality(analysisQuality)
-                }
-            },
-
-            content: {
-                summary: canonicalText
-                    .split(". ")
-                    .slice(0, 5)
-                    .join(". ")
-                    .slice(0, 800),
-
-                persuasion: {
-                    value: rhetoric?.persuasion_score ?? 0,
-                    interpretation: interpretPersuasion(
-                        rhetoric?.persuasion_score ?? 0
-                    )
-                },
-
-                framing,
-
-                techniques: rhetoric?.signals ?? []
-            },
-
-            layers: fused?.layers || [],
-
+            meta: report.meta,
+            report,
             debug: {
                 text_length: canonicalText.length
             }
         });
 
     } catch (err) {
+        console.error("ANALYZE CRASH:", err);
+
         return safeJson(res, {
             ok: false,
             error: "internal_server_error",
