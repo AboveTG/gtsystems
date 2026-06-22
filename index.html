@@ -7,53 +7,54 @@
 
 <style>
 body {
-    margin:0;
-    background:#0a0a0a;
-    color:#e0e0e0;
-    font-family:monospace;
+    margin: 0;
+    background: #0a0a0a;
+    color: #e0e0e0;
+    font-family: monospace;
 }
 
 #ui {
-    width:500px;
-    margin:auto;
-    padding:20px;
+    width: 520px;
+    margin: auto;
+    padding: 20px;
 }
 
 textarea {
-    width:100%;
-    height:120px;
-    background:#000;
-    color:#00ff41;
-    border:1px solid #333;
-    padding:10px;
+    width: 100%;
+    height: 120px;
+    background: #000;
+    color: #00ff41;
+    border: 1px solid #333;
+    padding: 10px;
 }
 
 button {
-    width:100%;
-    padding:12px;
-    margin-top:10px;
-    background:#00ff41;
-    border:none;
-    font-weight:bold;
-    cursor:pointer;
+    width: 100%;
+    padding: 12px;
+    margin-top: 10px;
+    background: #00ff41;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
 }
 
 .panel {
-    margin-top:12px;
-    background:#111;
-    padding:10px;
-    border:1px solid #333;
+    margin-top: 12px;
+    background: #111;
+    padding: 10px;
+    border: 1px solid #333;
 }
 
 .bar {
-    height:8px;
-    background:#222;
+    height: 10px;
+    background: #222;
+    margin-top: 6px;
 }
 
 .bar > div {
-    height:100%;
-    background:#00ff41;
-    width:0%;
+    height: 100%;
+    background: #00ff41;
+    width: 0%;
 }
 </style>
 </head>
@@ -62,31 +63,42 @@ button {
 
 <div id="ui">
 
-<textarea id="input"></textarea>
+<textarea id="input" placeholder="Paste URL or text..."></textarea>
 <button onclick="run()">ANALYZE</button>
 
 <div class="panel">
-    <b>Context Level:</b> <span id="signal">-</span><br>
-    <b>Reliability:</b> <span id="quality">-</span>
+    <b>Signal Strength</b><br>
+    <span id="signal">-</span>
 </div>
 
 <div class="panel">
-    <b>Summary</b>
+    <b>Confidence</b><br>
+    <span id="confidence">-</span>
+</div>
+
+<div class="panel">
+    <b>Propaganda Score</b>
+    <div class="bar"><div id="propBar"></div></div>
+    <div id="propText">-</div>
+</div>
+
+<div class="panel">
+    <b>Main Narrative Frame</b>
+    <div id="frame">-</div>
+</div>
+
+<div class="panel">
+    <b>Summary (Plain English)</b>
     <div id="summary">-</div>
 </div>
 
 <div class="panel">
-    <b>Persuasion Tone</b>
-    <div id="persuasion">-</div>
+    <b>Explanation</b>
+    <pre id="conclusions"></pre>
 </div>
 
 <div class="panel">
-    <b>Framing Structure</b>
-    <pre id="framing"></pre>
-</div>
-
-<div class="panel">
-    <b>Errors</b>
+    <b>Error</b>
     <pre id="error"></pre>
 </div>
 
@@ -96,14 +108,12 @@ button {
 
 async function run() {
 
-    const input =
-        document.getElementById("input").value.trim();
+    const input = document.getElementById("input").value.trim();
 
     document.getElementById("error").innerText = "";
 
     if (!input) {
-        document.getElementById("error").innerText =
-            "No input provided";
+        document.getElementById("error").innerText = "No input provided";
         return;
     }
 
@@ -112,9 +122,7 @@ async function run() {
     try {
         const res = await fetch("/api/analyze", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ input })
         });
 
@@ -124,7 +132,7 @@ async function run() {
             data = JSON.parse(text);
         } catch {
             document.getElementById("error").innerText =
-                "NON-JSON RESPONSE:\n\n" + text;
+                "NON-JSON RESPONSE:\n\n" + text.slice(0, 4000);
             return;
         }
 
@@ -139,23 +147,37 @@ async function run() {
         return;
     }
 
-    const meta = data.meta || {};
-    const content = data.content || {};
+    const report = data.report || {};
 
+    // SIGNAL
     document.getElementById("signal").innerText =
-        meta.signal?.label ?? "-";
+        data.signal_level ?? "-";
 
-    document.getElementById("quality").innerText =
-        meta.quality?.label ?? "-";
+    // CONFIDENCE
+    document.getElementById("confidence").innerText =
+        report.analysis_quality?.label ?? "Unknown";
 
+    // PROPAGANDA SCORE
+    const score = report.analysis?.propaganda_score ?? 0;
+
+    document.getElementById("propBar").style.width =
+        Math.min(100, score) + "%";
+
+    document.getElementById("propText").innerText =
+        score + " / 100";
+
+    // FRAME
+    document.getElementById("frame").innerText =
+        report.analysis?.primary_frame ?? "-";
+
+    // SUMMARY
     document.getElementById("summary").innerText =
-        content.summary ?? "-";
+        report.summary?.short ?? "-";
 
-    document.getElementById("persuasion").innerText =
-        content.persuasion?.interpretation ?? "-";
+    // CONCLUSIONS
+    document.getElementById("conclusions").innerText =
+        (report.conclusions || []).join("\n");
 
-    document.getElementById("framing").innerText =
-        JSON.stringify(content.framing ?? {}, null, 2);
 }
 
 </script>
