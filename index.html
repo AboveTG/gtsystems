@@ -106,59 +106,64 @@ button {
 
 async function run() {
 
-    const input = document.getElementById("input").value;
+    const input =
+        document.getElementById("input").value.trim();
 
     document.getElementById("error").innerText = "";
+
+    if (!input) {
+        document.getElementById("error").innerText =
+            "No input provided";
+        return;
+    }
 
     let data;
 
     try {
 
-        const res = await fetch(url, {
-    redirect: "follow",
-    headers: {
-        "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-
-        "Accept":
-            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-
-        "Accept-Language":
-            "en-US,en;q=0.9",
-
-        "Cache-Control":
-            "no-cache",
-
-        "Connection":
-            "keep-alive",
-
-        "Upgrade-Insecure-Requests":
-            "1"
-    }
-});
+        const res = await fetch("/api/analyze", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                input
+            })
+        });
 
         const text = await res.text();
 
         try {
             data = JSON.parse(text);
-        } catch (e) {
+        }
+        catch {
+
             document.getElementById("error").innerText =
-                "NON-JSON RESPONSE:\n\n" + text;
+                "NON-JSON RESPONSE\n\n" +
+                text.substring(0, 5000);
+
             return;
         }
 
-    } catch (err) {
-        document.getElementById("error").innerText = err.message;
+    }
+    catch (err) {
+
+        document.getElementById("error").innerText =
+            err.message;
+
         return;
     }
 
     if (!data.ok) {
+
         document.getElementById("error").innerText =
             data.error || "analysis_failed";
+
         return;
     }
 
-    const r = data.report || {};
+    const report =
+        data.report || {};
 
     document.getElementById("signal").innerText =
         data.meta?.signal_level ?? "-";
@@ -167,26 +172,36 @@ async function run() {
         data.meta?.analysis_quality ?? "-";
 
     document.getElementById("summary").innerText =
-        r.summary ?? "-";
+        report.summary ?? "-";
 
     document.getElementById("claim").innerText =
-        r.primary_claim ?? "-";
+        report.primary_claim ?? "-";
 
-    const intensity = r.persuasion?.intensity ?? 0;
+    const intensity =
+        report.persuasion?.intensity ?? 0;
 
     document.getElementById("bar").style.width =
-        Math.min(100, intensity * 100) + "%";
+        Math.min(
+            100,
+            intensity * 100
+        ) + "%";
 
     document.getElementById("percent").innerText =
-        Math.round(intensity * 100) + "%";
+        Math.round(
+            intensity * 100
+        ) + "%";
 
     document.getElementById("framing").innerText =
-        JSON.stringify(r.framing ?? {}, null, 2);
+        JSON.stringify(
+            report.framing || {},
+            null,
+            2
+        );
 
     document.getElementById("risk").innerText =
-        r.narrative_risk?.level + " - " +
-        (r.narrative_risk?.explanation || "");
-
+        report.narrative_risk
+            ? `${report.narrative_risk.level} - ${report.narrative_risk.explanation}`
+            : "-";
 }
 
 </script>
