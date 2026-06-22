@@ -1,60 +1,57 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Ground Truth Systems</title>
 
 <style>
 body {
-    margin: 0;
-    background: #0a0a0a;
-    color: #e0e0e0;
-    font-family: monospace;
+    margin:0;
+    background:#0a0a0a;
+    color:#e0e0e0;
+    font-family:monospace;
 }
 
 #ui {
-    width: 520px;
-    margin: auto;
-    padding: 20px;
+    width:520px;
+    margin:auto;
+    padding:20px;
 }
 
 textarea {
-    width: 100%;
-    height: 120px;
-    background: #000;
-    color: #00ff41;
-    border: 1px solid #333;
-    padding: 10px;
+    width:100%;
+    height:120px;
+    background:#000;
+    color:#00ff41;
+    border:1px solid #333;
+    padding:10px;
 }
 
 button {
-    width: 100%;
-    padding: 12px;
-    margin-top: 10px;
-    background: #00ff41;
-    border: none;
-    font-weight: bold;
-    cursor: pointer;
+    width:100%;
+    padding:12px;
+    margin-top:10px;
+    background:#00ff41;
+    border:none;
+    font-weight:bold;
 }
 
 .panel {
-    margin-top: 12px;
-    background: #111;
-    padding: 10px;
-    border: 1px solid #333;
+    margin-top:12px;
+    background:#111;
+    padding:10px;
+    border:1px solid #333;
 }
 
 .bar {
-    height: 10px;
-    background: #222;
-    margin-top: 6px;
+    height:10px;
+    background:#222;
 }
 
 .bar > div {
-    height: 100%;
-    background: #00ff41;
-    width: 0%;
+    height:100%;
+    background:#00ff41;
+    width:0%;
 }
 </style>
 </head>
@@ -63,61 +60,54 @@ button {
 
 <div id="ui">
 
-<textarea id="input" placeholder="Paste URL or text..."></textarea>
-<button onclick="run()">ANALYZE</button>
+<textarea id="input"></textarea>
+<button onclick="run()">Analyze</button>
 
 <div class="panel">
-    <b>Signal Strength</b><br>
-    <span id="signal">-</span>
+    <b>Input Strength:</b> <span id="signal">-</span><br>
+    <b>Confidence:</b> <span id="quality">-</span>
 </div>
 
 <div class="panel">
-    <b>Confidence</b><br>
-    <span id="confidence">-</span>
+    <b>Summary</b>
+    <div id="summary"></div>
 </div>
 
 <div class="panel">
-    <b>Propaganda Score</b>
-    <div class="bar"><div id="propBar"></div></div>
-    <div id="propText">-</div>
+    <b>Main Idea</b>
+    <div id="claim"></div>
 </div>
 
 <div class="panel">
-    <b>Main Narrative Frame</b>
-    <div id="frame">-</div>
+    <b>Influence Level</b>
+    <div class="bar"><div id="bar"></div></div>
 </div>
 
 <div class="panel">
-    <b>Summary (Plain English)</b>
-    <div id="summary">-</div>
+    <b>Narrative Structure</b>
+    <pre id="framing"></pre>
 </div>
 
 <div class="panel">
-    <b>Explanation</b>
-    <pre id="conclusions"></pre>
+    <b>Risk</b>
+    <div id="risk"></div>
 </div>
 
-<div class="panel">
-    <b>Error</b>
-    <pre id="error"></pre>
-</div>
+<pre id="error"></pre>
 
 </div>
 
 <script>
 
 async function run() {
-
     const input = document.getElementById("input").value.trim();
-
-    document.getElementById("error").innerText = "";
+    const errorBox = document.getElementById("error");
+    errorBox.innerText = "";
 
     if (!input) {
-        document.getElementById("error").innerText = "No input provided";
+        errorBox.innerText = "No input provided";
         return;
     }
-
-    let data;
 
     try {
         const res = await fetch("/api/analyze", {
@@ -128,58 +118,40 @@ async function run() {
 
         const text = await res.text();
 
+        let data;
         try {
             data = JSON.parse(text);
         } catch {
-            document.getElementById("error").innerText =
-                "NON-JSON RESPONSE:\n\n" + text.slice(0, 4000);
+            errorBox.innerText = "Invalid server response:\n\n" + text;
             return;
         }
 
+        if (!data.ok) {
+            errorBox.innerText = data.error || "analysis_failed";
+            return;
+        }
+
+        const r = data.report;
+
+        document.getElementById("signal").innerText = data.meta.input_strength;
+        document.getElementById("quality").innerText = data.meta.confidence_score;
+
+        document.getElementById("summary").innerText = r.summary.short;
+        document.getElementById("claim").innerText = r.primary_claim;
+
+        document.getElementById("bar").style.width =
+            Math.min(100, r.insights.influence_score * 100) + "%";
+
+        document.getElementById("framing").innerText =
+            JSON.stringify(r.framing.narrative_mix, null, 2);
+
+        document.getElementById("risk").innerText =
+            r.narrative_risk.level + " - " + r.narrative_risk.explanation;
+
     } catch (err) {
-        document.getElementById("error").innerText = err.message;
-        return;
+        errorBox.innerText = err.message;
     }
-
-    if (!data.ok) {
-        document.getElementById("error").innerText =
-            data.error || "analysis_failed";
-        return;
-    }
-
-    const report = data.report || {};
-
-    // SIGNAL
-    document.getElementById("signal").innerText =
-        data.signal_level ?? "-";
-
-    // CONFIDENCE
-    document.getElementById("confidence").innerText =
-        report.analysis_quality?.label ?? "Unknown";
-
-    // PROPAGANDA SCORE
-    const score = report.analysis?.propaganda_score ?? 0;
-
-    document.getElementById("propBar").style.width =
-        Math.min(100, score) + "%";
-
-    document.getElementById("propText").innerText =
-        score + " / 100";
-
-    // FRAME
-    document.getElementById("frame").innerText =
-        report.analysis?.primary_frame ?? "-";
-
-    // SUMMARY
-    document.getElementById("summary").innerText =
-        report.summary?.short ?? "-";
-
-    // CONCLUSIONS
-    document.getElementById("conclusions").innerText =
-        (report.conclusions || []).join("\n");
-
 }
-
 </script>
 
 </body>
