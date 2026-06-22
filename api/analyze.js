@@ -32,20 +32,11 @@ export default async function handler(req, res) {
 
         let layers = [];
 
-        // -------------------------
-        // WEB EXTRACTION
-        // -------------------------
         if (type === "web") {
-            let extracted = null;
-
-            try {
-                extracted = await extractWebpageText(input);
-            } catch {
-                extracted = null;
-            }
+            const extracted = await extractWebpageText(input);
 
             layers.push({
-                layer: "webpage",
+                layer: "web",
                 status: extracted ? "hit" : "miss",
                 weight: extracted ? 1 : 0.2
             });
@@ -54,7 +45,6 @@ export default async function handler(req, res) {
                 return safeJson(res, {
                     ok: false,
                     error: "web_extraction_failed",
-                    meta: { source_type: type },
                     layers
                 });
             }
@@ -62,39 +52,28 @@ export default async function handler(req, res) {
             text = extracted;
         }
 
-        // -------------------------
-        // ANALYSIS CORE
-        // -------------------------
         const signal = signalLevel(text);
 
         const fused = fuseEvidence([
-            {
-                layer: type,
-                status: "hit",
-                weight: 1,
-                text
-            }
+            { layer: type, status: "hit", weight: 1, text }
         ]);
 
-        const canonicalText = fused?.text || "";
+        const canonicalText = fused.text || "";
 
         if (!isValidText(canonicalText)) {
             return safeJson(res, {
                 ok: false,
                 error: "insufficient_text",
-                meta: {
-                    source_type: type,
-                    signal_level: signal
-                },
-                layers: fused?.layers || []
+                signal_level: signal,
+                layers: fused.layers
             });
         }
 
         const rhetoric = rhetoricalScan(canonicalText);
         const framing = framingScan(canonicalText);
 
-        const analysis_quality = computeAnalysisQuality({
-            layers: fused?.layers || [],
+        const quality = computeAnalysisQuality({
+            layers: fused.layers,
             signalLevel: signal,
             rhetoric,
             framing
@@ -104,22 +83,19 @@ export default async function handler(req, res) {
             text: canonicalText,
             sourceType: type,
             signalLevel: signal,
-            analysisQuality: analysis_quality,
+            analysisQuality: quality.score,
             rhetoric,
             framing
         });
 
         return safeJson(res, {
             ok: true,
-            meta: {
-                source_type: type,
-                signal_level: signal,
-                analysis_quality
-            },
-            report, // ✅ now properly defined
-            debug: {
-                text_length: canonicalText.length
-            }
+
+            signal_level: signal,
+
+            analysis_quality: quality,
+
+            report
         });
 
     } catch (err) {
