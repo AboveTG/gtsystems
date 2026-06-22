@@ -101,14 +101,14 @@ export default async function handler(req, res) {
         // -------------------------
         // REPORT
         // -------------------------
-        const report = generateReport({
-            text: canonicalText,
-            sourceType: type,
-            signalLevel: signal,
-            analysisQuality: analysis_quality,
-            rhetoric,
-            framing
-        });
+        report: generateReport({
+    text: canonicalText,
+    sourceType: type,
+    signalLevel: signal,
+    analysisQuality: analysis_quality,
+    rhetoric,
+    framing
+})
 
         return safeJson(res, {
             ok: true,
