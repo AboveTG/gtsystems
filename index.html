@@ -1,7 +1,8 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Ground Truth Systems</title>
 
 <style>
@@ -34,6 +35,7 @@ button {
     background:#00ff41;
     border:none;
     font-weight:bold;
+    cursor:pointer;
 }
 
 .panel {
@@ -44,7 +46,7 @@ button {
 }
 
 .bar {
-    height:10px;
+    height:8px;
     background:#222;
 }
 
@@ -60,98 +62,125 @@ button {
 
 <div id="ui">
 
-<textarea id="input"></textarea>
-<button onclick="run()">Analyze</button>
+<textarea id="input" placeholder="Paste URL or text..."></textarea>
+<button onclick="run()">ANALYZE</button>
 
 <div class="panel">
-    <b>Input Strength:</b> <span id="signal">-</span><br>
-    <b>Confidence:</b> <span id="quality">-</span>
+    <b>Signal Level:</b> <span id="signal">-</span><br>
+    <b>Confidence:</b> <span id="confidence">-</span>
 </div>
 
 <div class="panel">
     <b>Summary</b>
-    <div id="summary"></div>
+    <div id="summary">-</div>
 </div>
 
 <div class="panel">
-    <b>Main Idea</b>
-    <div id="claim"></div>
+    <b>Plain English Explanation</b>
+    <div id="plain">-</div>
 </div>
 
 <div class="panel">
-    <b>Influence Level</b>
+    <b>Influence Strength</b>
     <div class="bar"><div id="bar"></div></div>
+    <div id="percent">-</div>
 </div>
 
 <div class="panel">
-    <b>Narrative Structure</b>
-    <pre id="framing"></pre>
+    <b>Narrative Frame</b>
+    <pre id="framing">-</pre>
 </div>
 
 <div class="panel">
-    <b>Risk</b>
-    <div id="risk"></div>
+    <b>Key Conclusions</b>
+    <pre id="conclusions">-</pre>
 </div>
 
-<pre id="error"></pre>
+<div class="panel">
+    <pre id="error"></pre>
+</div>
 
 </div>
 
 <script>
 
 async function run() {
+
     const input = document.getElementById("input").value.trim();
-    const errorBox = document.getElementById("error");
-    errorBox.innerText = "";
+    document.getElementById("error").innerText = "";
 
     if (!input) {
-        errorBox.innerText = "No input provided";
+        document.getElementById("error").innerText = "No input provided";
         return;
     }
+
+    let data;
 
     try {
         const res = await fetch("/api/analyze", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json"
+            },
             body: JSON.stringify({ input })
         });
 
         const text = await res.text();
 
-        let data;
         try {
             data = JSON.parse(text);
         } catch {
-            errorBox.innerText = "Invalid server response:\n\n" + text;
+            document.getElementById("error").innerText =
+                "NON-JSON RESPONSE:\n\n" + text.slice(0, 4000);
             return;
         }
-
-        if (!data.ok) {
-            errorBox.innerText = data.error || "analysis_failed";
-            return;
-        }
-
-        const r = data.report;
-
-        document.getElementById("signal").innerText = data.meta.input_strength;
-        document.getElementById("quality").innerText = data.meta.confidence_score;
-
-        document.getElementById("summary").innerText = r.summary.short;
-        document.getElementById("claim").innerText = r.primary_claim;
-
-        document.getElementById("bar").style.width =
-            Math.min(100, r.insights.influence_score * 100) + "%";
-
-        document.getElementById("framing").innerText =
-            JSON.stringify(r.framing.narrative_mix, null, 2);
-
-        document.getElementById("risk").innerText =
-            r.narrative_risk.level + " - " + r.narrative_risk.explanation;
 
     } catch (err) {
-        errorBox.innerText = err.message;
+        document.getElementById("error").innerText = err.message;
+        return;
     }
+
+    if (!data.ok) {
+        document.getElementById("error").innerText =
+            data.error || "analysis_failed";
+        return;
+    }
+
+    const meta = data.meta || {};
+    const report = data.report || {};
+    const summary = report.summary || {};
+    const influence = report.influence || {};
+
+    // -----------------------
+    // SAFE DISPLAY (NO UNDEFINED CRASHES)
+    // -----------------------
+    document.getElementById("signal").innerText =
+        meta.signal_level ?? "-";
+
+    document.getElementById("confidence").innerText =
+        meta.analysis_quality ?? "-";
+
+    document.getElementById("summary").innerText =
+        summary.short ?? "-";
+
+    document.getElementById("plain").innerText =
+        summary.plain_english ?? "-";
+
+    const intensity = influence.persuasion_score ?? 0;
+
+    document.getElementById("bar").style.width =
+        Math.min(100, intensity * 100) + "%";
+
+    document.getElementById("percent").innerText =
+        Math.round(intensity * 100) + "%";
+
+    document.getElementById("framing").innerText =
+        JSON.stringify(report.framing || {}, null, 2);
+
+    document.getElementById("conclusions").innerText =
+        (report.conclusions || []).join("\n") || "-";
 }
+
 </script>
 
 </body>
