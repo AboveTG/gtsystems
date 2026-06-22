@@ -8,7 +8,15 @@ import { generateReport } from "../lib/report.js";
 
 function safeJson(res, payload, status = 200) {
     res.setHeader("Content-Type", "application/json");
-    return res.status(status).json(payload);
+
+    try {
+        return res.status(status).json(payload);
+    } catch (e) {
+        return res.status(500).json({
+            ok: false,
+            error: "response_serialization_failed"
+        });
+    }
 }
 
 function isValidText(text) {
@@ -23,17 +31,24 @@ export default async function handler(req, res) {
 
         const input = req.body?.input;
 
-        if (!input || typeof input !== "string") {
+        if (!input || typeof input !== "string" || !input.trim()) {
             return safeJson(res, { ok: false, error: "missing_input" }, 400);
         }
 
         const type = classifyInput(input);
         let text = normalizeInput(input);
 
-        let layers = [];
+        const layers = [];
 
+        // ---------------- WEB ----------------
         if (type === "web") {
-            const extracted = await extractWebpageText(input);
+            let extracted = null;
+
+            try {
+                extracted = await extractWebpageText(input);
+            } catch {
+                extracted = null;
+            }
 
             layers.push({
                 layer: "web",
@@ -45,6 +60,10 @@ export default async function handler(req, res) {
                 return safeJson(res, {
                     ok: false,
                     error: "web_extraction_failed",
+                    meta: {
+                        input_type: type,
+                        message: "Unable to extract readable article content"
+                    },
                     layers
                 });
             }
@@ -55,24 +74,31 @@ export default async function handler(req, res) {
         const signal = signalLevel(text);
 
         const fused = fuseEvidence([
-            { layer: type, status: "hit", weight: 1, text }
+            {
+                layer: type,
+                status: "hit",
+                weight: 1,
+                text
+            }
         ]);
 
-        const canonicalText = fused.text || "";
+        const canonicalText = (fused?.text || "").trim();
 
         if (!isValidText(canonicalText)) {
             return safeJson(res, {
                 ok: false,
-                error: "insufficient_text",
-                signal_level: signal,
-                layers: fused.layers
+                error: "insufficient_content",
+                meta: {
+                    input_type: type,
+                    input_strength: signal
+                }
             });
         }
 
         const rhetoric = rhetoricalScan(canonicalText);
         const framing = framingScan(canonicalText);
 
-        const quality = computeAnalysisQuality({
+        const confidence = computeAnalysisQuality({
             layers: fused.layers,
             signalLevel: signal,
             rhetoric,
@@ -83,7 +109,7 @@ export default async function handler(req, res) {
             text: canonicalText,
             sourceType: type,
             signalLevel: signal,
-            analysisQuality: quality.score,
+            analysisQuality: confidence,
             rhetoric,
             framing
         });
@@ -91,9 +117,11 @@ export default async function handler(req, res) {
         return safeJson(res, {
             ok: true,
 
-            signal_level: signal,
-
-            analysis_quality: quality,
+            meta: {
+                input_type: type,
+                input_strength: signal,
+                confidence_score: confidence
+            },
 
             report
         });
