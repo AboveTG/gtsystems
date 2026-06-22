@@ -54,6 +54,7 @@ export default async function handler(req, res) {
                 return safeJson(res, {
                     ok: false,
                     error: "web_extraction_failed",
+                    meta: { source_type: type },
                     layers
                 });
             }
@@ -62,7 +63,7 @@ export default async function handler(req, res) {
         }
 
         // -------------------------
-        // SIGNAL
+        // ANALYSIS CORE
         // -------------------------
         const signal = signalLevel(text);
 
@@ -75,45 +76,47 @@ export default async function handler(req, res) {
             }
         ]);
 
-        const canonicalText = fused.text?.trim() || "";
+        const canonicalText = fused?.text || "";
 
         if (!isValidText(canonicalText)) {
             return safeJson(res, {
                 ok: false,
                 error: "insufficient_text",
-                layers: fused.layers || []
+                meta: {
+                    source_type: type,
+                    signal_level: signal
+                },
+                layers: fused?.layers || []
             });
         }
 
-        // -------------------------
-        // ANALYSIS CORE
-        // -------------------------
         const rhetoric = rhetoricalScan(canonicalText);
         const framing = framingScan(canonicalText);
 
         const analysis_quality = computeAnalysisQuality({
-            layers: fused.layers,
+            layers: fused?.layers || [],
             signalLevel: signal,
             rhetoric,
             framing
         });
 
-        // -------------------------
-        // REPORT
-        // -------------------------
-        report: generateReport({
-    text: canonicalText,
-    sourceType: type,
-    signalLevel: signal,
-    analysisQuality: analysis_quality,
-    rhetoric,
-    framing
-})
+        const report = generateReport({
+            text: canonicalText,
+            sourceType: type,
+            signalLevel: signal,
+            analysisQuality: analysis_quality,
+            rhetoric,
+            framing
+        });
 
         return safeJson(res, {
             ok: true,
-            meta: report.meta,
-            report,
+            meta: {
+                source_type: type,
+                signal_level: signal,
+                analysis_quality
+            },
+            report, // ✅ now properly defined
             debug: {
                 text_length: canonicalText.length
             }
