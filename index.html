@@ -166,37 +166,28 @@ async function run() {
         data.report || {};
 
     document.getElementById("signal").innerText =
-        data.meta?.signal_level ?? "-";
+    data.meta?.signal_strength ?? "-";
 
-    document.getElementById("quality").innerText =
-        data.meta?.analysis_quality ?? "-";
+document.getElementById("quality").innerText =
+    data.meta?.analysis_quality ?? "-";
 
-    document.getElementById("summary").innerText =
-        report.summary ?? "-";
+document.getElementById("summary").innerText =
+    data.content?.summary ?? "-";
 
-    document.getElementById("claim").innerText =
-        report.primary_claim ?? "-";
+document.getElementById("claim").innerText =
+    data.content?.framing?.primary ?? "-";
 
-    const intensity =
-        report.persuasion?.intensity ?? 0;
+const intensity =
+    data.content?.persuasion_score ?? 0;
 
-    document.getElementById("bar").style.width =
-        Math.min(
-            100,
-            intensity * 100
-        ) + "%";
+document.getElementById("bar").style.width =
+    Math.min(100, intensity * 100) + "%";
 
-    document.getElementById("percent").innerText =
-        Math.round(
-            intensity * 100
-        ) + "%";
+document.getElementById("percent").innerText =
+    Math.round(intensity * 100) + "%";
 
-    document.getElementById("framing").innerText =
-        JSON.stringify(
-            report.framing || {},
-            null,
-            2
-        );
+document.getElementById("framing").innerText =
+    JSON.stringify(data.content?.framing?.raw ?? {}, null, 2);
 
     document.getElementById("risk").innerText =
         report.narrative_risk
